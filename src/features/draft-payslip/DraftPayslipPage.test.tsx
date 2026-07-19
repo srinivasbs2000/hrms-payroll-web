@@ -1,0 +1,1 @@
+import {render,screen} from '@testing-library/react'; import {describe,it,expect} from 'vitest'; import {DraftPayslipPage} from './DraftPayslipPage'; describe('draft payslip',()=>{it('shows golden gross',()=>{render(<DraftPayslipPage/>);expect(screen.getByText('90,000.00')).toBeInTheDocument();expect(screen.getByText(/DRAFT/)).toBeInTheDocument();});});
