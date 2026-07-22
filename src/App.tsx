@@ -2,6 +2,7 @@ import {NavLink,Route,Routes} from 'react-router-dom';
 import {DraftPayslipPage} from './features/draft-payslip/DraftPayslipPage';
 import {SetupPage} from './features/organisation/SetupPage';
 import {PayGroupPage} from './features/pay-group/PayGroupPage';
+import {PayComponentPage} from './features/pay-component/PayComponentPage';
 import {PayrollCalendarPage} from './features/payroll-calendar/PayrollCalendarPage';
 
 export function App(){
@@ -13,6 +14,7 @@ export function App(){
         <NavLink to="/organisation">Organisation</NavLink>
         <NavLink to="/payroll-calendars">Payroll calendars</NavLink>
         <NavLink to="/pay-groups">Pay groups</NavLink>
+        <NavLink to="/pay-components">Pay components</NavLink>
         <NavLink to="/draft-payslip">Draft payslip</NavLink>
       </nav>
     </header>
@@ -22,6 +24,7 @@ export function App(){
         <Route path="/organisation" element={<SetupPage/>}/>
         <Route path="/payroll-calendars" element={<PayrollCalendarPage/>}/>
         <Route path="/pay-groups" element={<PayGroupPage/>}/>
+        <Route path="/pay-components" element={<PayComponentPage/>}/>
         <Route path="/draft-payslip" element={<DraftPayslipPage/>}/>
       </Routes>
     </main>
