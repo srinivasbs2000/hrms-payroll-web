@@ -47,3 +47,20 @@ textarea{width:100%;min-height:7rem;padding:.7rem;border:1px solid #aebbb3;borde
 .evidence-block{border-top:1px solid #dce4dc;margin-top:1.5rem;padding-top:1rem;font-size:.85rem;color:#52625b}
 @media(max-width:900px){.payroll-execution-layout{grid-template-columns:1fr}.execution-summary{grid-template-columns:1fr}}
 @media(max-width:760px){.recalculation-form,.payslip-identifiers,.payslip-columns{grid-template-columns:1fr}.payslip-heading{display:block}.payslip-heading>div:last-child{text-align:left;margin-top:1rem}.hash-line,.evidence-block p{grid-template-columns:1fr}}
+.application-header{grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:1.5rem}
+.application-header .brand-block{min-width:13rem}
+.application-header nav{grid-column:auto;grid-row:auto}
+.session-summary{display:flex;gap:.8rem;align-items:center;justify-content:flex-end}
+.session-summary span{display:grid;text-align:right;line-height:1.25}
+.session-summary small{color:#c7ddd6;max-width:18rem;overflow:hidden;text-overflow:ellipsis}
+.secondary-button{background:transparent;border:1px solid #b9d8ce;color:#fff}
+.authentication-page{max-width:none;min-height:100vh;margin:0;padding:clamp(1rem,7vw,7rem);display:grid;place-items:center;background:radial-gradient(circle at top left,#2d6458 0,#173d35 43%,#0e2b25 100%)}
+.authentication-card{width:min(880px,100%);display:grid;grid-template-columns:minmax(0,1.45fr) minmax(260px,.75fr);gap:3rem;align-items:center;background:#fff;border-radius:22px;padding:clamp(1.5rem,5vw,4.5rem);box-shadow:0 28px 80px rgba(0,0,0,.24)}
+.authentication-card .brand-kicker{color:#527268}
+.authentication-card h1{font:500 clamp(2.4rem,6vw,4.7rem)/.98 Georgia,serif;margin:.45rem 0 1.25rem;color:#173d35}
+.authentication-card p{font-size:1.08rem;line-height:1.65}
+.authentication-action{display:grid;gap:1rem;padding:1.25rem;border-radius:14px;background:#edf7f2}
+.authentication-action button{width:100%}
+.authentication-action small{line-height:1.45;color:#52625b}
+@media(max-width:1050px){.application-header{grid-template-columns:1fr}.application-header nav{justify-content:flex-start}.session-summary{justify-content:space-between}.session-summary span{text-align:left}}
+@media(max-width:760px){.authentication-card{grid-template-columns:1fr;gap:1.5rem}.session-summary{align-items:flex-start;flex-direction:column}}
