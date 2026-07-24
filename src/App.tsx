@@ -6,6 +6,7 @@ import {PayGroupPage} from './features/pay-group/PayGroupPage';
 import {PayComponentPage} from './features/pay-component/PayComponentPage';
 import {SalaryStructurePage} from './features/salary-structure/SalaryStructurePage';
 import {PayrollCalendarPage} from './features/payroll-calendar/PayrollCalendarPage';
+import {PayrollExecutionPage} from './features/payroll-execution/PayrollExecutionPage';
 
 export function App(){
   return <>
@@ -19,6 +20,7 @@ export function App(){
         <NavLink to="/pay-components">Pay components</NavLink>
         <NavLink to="/salary-structures">Salary structures</NavLink>
         <NavLink to="/employee-payroll">Employee payroll</NavLink>
+        <NavLink to="/payroll-execution">Payroll execution</NavLink>
         <NavLink to="/draft-payslip">Draft payslip</NavLink>
       </nav>
     </header>
@@ -31,6 +33,7 @@ export function App(){
         <Route path="/pay-components" element={<PayComponentPage/>}/>
         <Route path="/salary-structures" element={<SalaryStructurePage/>}/>
         <Route path="/employee-payroll" element={<EmployeePayrollPage/>}/>
+        <Route path="/payroll-execution" element={<PayrollExecutionPage/>}/>
         <Route path="/draft-payslip" element={<DraftPayslipPage/>}/>
       </Routes>
     </main>

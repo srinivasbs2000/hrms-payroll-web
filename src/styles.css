@@ -30,3 +30,20 @@ table caption{text-align:left;font-weight:700;padding:.5rem 0 .8rem}
   .employee-item{align-items:flex-start}.employee-item span:last-child{text-align:left}
   .inline-form{display:grid;grid-template-columns:1fr}
 }
+textarea{width:100%;min-height:7rem;padding:.7rem;border:1px solid #aebbb3;border-radius:7px;background:#fff;font:inherit;resize:vertical}
+.text-link{color:#185942;font-weight:750;text-decoration-thickness:2px;text-underline-offset:.18em}
+.payroll-execution-layout{display:grid;grid-template-columns:minmax(290px,.8fr) minmax(0,1.7fr);gap:1rem;align-items:start}
+.cycle-list{display:grid;gap:.5rem}.cycle-item{display:flex;justify-content:space-between;gap:1rem;align-items:center;text-align:left;background:#f7f9f5;color:#173d35;border:1px solid #dce4dc}.cycle-item span{display:grid;gap:.15rem}.cycle-item span:last-child{text-align:right}.cycle-item small{color:#617068;font-weight:500}.cycle-item.selected{outline:3px solid #8bbcad;background:#edf7f2}
+.execution-summary{grid-template-columns:repeat(3,minmax(0,1fr))}
+.execution-actions{display:flex;gap:.7rem;flex-wrap:wrap}.recalculation-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:1rem;align-items:end;margin-top:1rem;padding-top:1rem;border-top:1px solid #e5e9e3}
+.hash-line,.evidence-block p{display:grid;grid-template-columns:11rem minmax(0,1fr);gap:.75rem;align-items:start}.hash-line code,.evidence-block code{overflow-wrap:anywhere}
+.badge.population-resolved,.badge.inputs-sealed{background:#dcecf7;color:#174d70}.badge.calculated,.badge.completed,.badge.included{background:#dff1e9;color:#185942}
+.payslip-document{background:#fff;border:1px solid #c9d2cb;border-radius:14px;padding:clamp(1rem,4vw,2.5rem);margin-bottom:1rem;box-shadow:0 12px 36px rgba(35,55,45,.08)}
+.draft-banner{border:2px solid #9b4f19;background:#fff3e7;color:#7a3b10;padding:.7rem;text-align:center;font-weight:850;letter-spacing:.08em}
+.payslip-heading{display:flex;justify-content:space-between;gap:2rem;align-items:start;padding:1.5rem 0;border-bottom:1px solid #dce4dc}.payslip-heading h3{font:500 2rem Georgia,serif;margin:.2rem 0}.payslip-heading>div:last-child{text-align:right}
+.payslip-identifiers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;margin:1rem 0}.payslip-identifiers div{background:#f7f9f5;padding:.75rem;border-radius:8px}.payslip-identifiers dt{color:#617068;font-size:.75rem;text-transform:uppercase;letter-spacing:.06em}.payslip-identifiers dd{margin:.25rem 0 0;overflow-wrap:anywhere}
+.payslip-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.25rem}.payslip-columns h4{font:500 1.35rem Georgia,serif;margin-bottom:.5rem}
+.payslip-totals{margin:1.5rem 0 0 auto;max-width:28rem}.payslip-totals div{display:flex;justify-content:space-between;gap:2rem;padding:.55rem .75rem}.payslip-totals dd{margin:0;font-variant-numeric:tabular-nums;font-weight:750}.payslip-totals .net-pay{border-top:2px solid #173d35;background:#edf7f2;font-size:1.1rem}
+.evidence-block{border-top:1px solid #dce4dc;margin-top:1.5rem;padding-top:1rem;font-size:.85rem;color:#52625b}
+@media(max-width:900px){.payroll-execution-layout{grid-template-columns:1fr}.execution-summary{grid-template-columns:1fr}}
+@media(max-width:760px){.recalculation-form,.payslip-identifiers,.payslip-columns{grid-template-columns:1fr}.payslip-heading{display:block}.payslip-heading>div:last-child{text-align:left;margin-top:1rem}.hash-line,.evidence-block p{grid-template-columns:1fr}}
