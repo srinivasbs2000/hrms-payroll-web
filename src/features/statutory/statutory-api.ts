@@ -3,15 +3,17 @@ import type {
   PayrollCycleView
 } from '../payroll-execution/payroll-execution-api';
 
+export type Money=string;
+
 export interface StatutoryEvaluationExecution {
   cycleId:string;
   calculationRequestId:string;
   evaluationRequestId:string;
   payrollResultCount:number;
   statutoryResultCount:number;
-  employeeTotal:number;
-  employerTotal:number;
-  postStatutoryNetTotal:number;
+  employeeTotal:Money;
+  employerTotal:Money;
+  postStatutoryNetTotal:Money;
   evidenceSetHash:string;
   cycleVersionNo:number;
   completedAt:string;
@@ -31,9 +33,9 @@ export interface StatutoryEvaluationRequestView {
   completedBy:string|null;
   payrollResultCount:number|null;
   statutoryResultCount:number|null;
-  employeeTotal:number|null;
-  employerTotal:number|null;
-  postStatutoryNetTotal:number|null;
+  employeeTotal:Money|null;
+  employerTotal:Money|null;
+  postStatutoryNetTotal:Money|null;
   evidenceSetHash:string|null;
   versionNo:number;
 }
@@ -48,8 +50,8 @@ export interface StatutoryResultView {
   statutoryRuleId:string;
   statutoryRuleVersionId:string;
   currency:string;
-  employeeAmount:number;
-  employerAmount:number;
+  employeeAmount:Money;
+  employerAmount:Money;
   resultHash:string;
   createdAt:string;
 }
@@ -61,10 +63,10 @@ export interface StatutoryLedgerPostingExecution {
   attemptNo:number;
   batchKind:string;
   postedEntryCount:number;
-  employeeDeltaTotal:number;
-  employerDeltaTotal:number;
-  cycleEmployeeTotal:number;
-  cycleEmployerTotal:number;
+  employeeDeltaTotal:Money;
+  employerDeltaTotal:Money;
+  cycleEmployeeTotal:Money;
+  cycleEmployerTotal:Money;
   ledgerSetHash:string;
   cycleVersionNo:number;
   completedAt:string;
@@ -77,10 +79,10 @@ export interface StatutoryCorrectionExecution {
   ledgerBatchId:string;
   attemptNo:number;
   postedEntryCount:number;
-  employeeDeltaTotal:number;
-  employerDeltaTotal:number;
-  cycleEmployeeTotal:number;
-  cycleEmployerTotal:number;
+  employeeDeltaTotal:Money;
+  employerDeltaTotal:Money;
+  cycleEmployeeTotal:Money;
+  cycleEmployerTotal:Money;
   ledgerSetHash:string;
   cycleVersionNo:number;
   completedAt:string;
@@ -104,10 +106,10 @@ export interface StatutoryLedgerBatchView {
   entryCount:number|null;
   balanceSnapshotCount:number|null;
   remittanceSummaryCount:number|null;
-  employeeDeltaTotal:number|null;
-  employerDeltaTotal:number|null;
-  cycleEmployeeTotal:number|null;
-  cycleEmployerTotal:number|null;
+  employeeDeltaTotal:Money|null;
+  employerDeltaTotal:Money|null;
+  cycleEmployeeTotal:Money|null;
+  cycleEmployerTotal:Money|null;
   ledgerSetHash:string|null;
   reconciliationHash:string|null;
   versionNo:number;
@@ -131,8 +133,8 @@ export interface StatutoryLedgerEntryView {
   entryKind:string;
   sourceEntryId:string|null;
   currency:string;
-  employeeAmountDelta:number;
-  employerAmountDelta:number;
+  employeeAmountDelta:Money;
+  employerAmountDelta:Money;
   reasonCode:string;
   reasonDetail:string|null;
   entryHash:string;
@@ -151,12 +153,12 @@ export interface StatutoryBalanceSnapshotView {
   jurisdictionCode:string;
   authorityCode:string;
   currency:string;
-  periodEmployeeAmount:number;
-  periodEmployerAmount:number;
-  cycleEmployeeAmount:number;
-  cycleEmployerAmount:number;
-  yearEmployeeAmount:number;
-  yearEmployerAmount:number;
+  periodEmployeeAmount:Money;
+  periodEmployerAmount:Money;
+  cycleEmployeeAmount:Money;
+  cycleEmployerAmount:Money;
+  yearEmployeeAmount:Money;
+  yearEmployerAmount:Money;
   snapshotHash:string;
   createdAt:string;
 }
@@ -167,16 +169,16 @@ export interface StatutoryReconciliationView {
   cycleId:string;
   evaluationRequestId:string;
   currency:string;
-  sourceEmployeeTotal:number;
-  sourceEmployerTotal:number;
-  correctionEmployeeTotal:number;
-  correctionEmployerTotal:number;
-  expectedEmployeeTotal:number;
-  expectedEmployerTotal:number;
-  ledgerEmployeeTotal:number;
-  ledgerEmployerTotal:number;
-  employeeVariance:number;
-  employerVariance:number;
+  sourceEmployeeTotal:Money;
+  sourceEmployerTotal:Money;
+  correctionEmployeeTotal:Money;
+  correctionEmployerTotal:Money;
+  expectedEmployeeTotal:Money;
+  expectedEmployerTotal:Money;
+  ledgerEmployeeTotal:Money;
+  ledgerEmployerTotal:Money;
+  employeeVariance:Money;
+  employerVariance:Money;
   status:string;
   reconciliationHash:string;
   createdAt:string;
@@ -193,13 +195,13 @@ export interface StatutoryRemittanceSummaryView {
   statutoryRuleId:string;
   statutoryRuleVersionId:string;
   currency:string;
-  batchEmployeeDelta:number;
-  batchEmployerDelta:number;
-  periodEmployeeTotal:number;
-  periodEmployerTotal:number;
-  yearEmployeeTotal:number;
-  yearEmployerTotal:number;
-  remittanceAmount:number;
+  batchEmployeeDelta:Money;
+  batchEmployerDelta:Money;
+  periodEmployeeTotal:Money;
+  periodEmployerTotal:Money;
+  yearEmployeeTotal:Money;
+  yearEmployerTotal:Money;
+  remittanceAmount:Money;
   remittancePosition:string;
   summaryHash:string;
   createdAt:string;
@@ -207,8 +209,8 @@ export interface StatutoryRemittanceSummaryView {
 
 export interface StatutoryCorrectionInput {
   statutoryResultId:string;
-  employeeAmountDelta:number;
-  employerAmountDelta:number;
+  employeeAmountDelta:Money;
+  employerAmountDelta:Money;
   reason:string;
 }
 

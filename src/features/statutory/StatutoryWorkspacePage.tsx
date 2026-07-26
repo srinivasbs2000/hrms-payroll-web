@@ -33,6 +33,8 @@ const readPermissions=[
   'statutory-remittance.read'
 ] as const;
 
+const moneyPattern=/^-?(?:0|[1-9][0-9]{0,14})(?:\.[0-9]{1,4})?$/;
+
 export function StatutoryWorkspacePage({
   api=httpStatutoryApi,
   permissions
@@ -220,18 +222,20 @@ export function StatutoryWorkspacePage({
     if(!cycle)return;
     const resultId=statutoryResultId.trim();
     const trimmedReason=reason.trim();
-    const employeeAmount=Number(employeeDelta);
-    const employerAmount=Number(employerDelta);
+    const employeeAmount=employeeDelta.trim();
+    const employerAmount=employerDelta.trim();
 
     if(!resultId){
       setError('A statutory result is required for correction');
       return;
     }
-    if(
-      !Number.isFinite(employeeAmount)||
-      !Number.isFinite(employerAmount)||
-      (employeeAmount===0&&employerAmount===0)
-    ){
+    if(!isMoneyString(employeeAmount)||!isMoneyString(employerAmount)){
+      setError(
+        'Correction deltas must be decimal strings with up to 4 fraction digits'
+      );
+      return;
+    }
+    if(isZeroMoney(employeeAmount)&&isZeroMoney(employerAmount)){
       setError('At least one signed correction delta must be non-zero');
       return;
     }
@@ -588,8 +592,9 @@ function CommandPanel(props:{
             <label>Employee delta
               <input
                 inputMode="decimal"
-                type="number"
-                step="0.0001"
+                type="text"
+                pattern={moneyPattern.source}
+                maxLength={21}
                 value={props.employeeDelta}
                 onChange={event=>props.setEmployeeDelta(event.target.value)}
               />
@@ -597,8 +602,9 @@ function CommandPanel(props:{
             <label>Employer delta
               <input
                 inputMode="decimal"
-                type="number"
-                step="0.0001"
+                type="text"
+                pattern={moneyPattern.source}
+                maxLength={21}
                 value={props.employerDelta}
                 onChange={event=>props.setEmployerDelta(event.target.value)}
               />
@@ -948,19 +954,36 @@ function shortHash(value:string){
 }
 
 function amountOrDash(
-  value:number|null|undefined,
+  value:string|null|undefined,
   currency:string
 ){
   return value===null||value===undefined?'—':money(value,currency);
 }
 
-function money(value:number,currency:string){
-  return new Intl.NumberFormat('en-IN',{
-    style:'currency',
-    currency,
-    minimumFractionDigits:2,
-    maximumFractionDigits:2
-  }).format(value);
+function isMoneyString(value:string){
+  return moneyPattern.test(value);
+}
+
+function isZeroMoney(value:string){
+  return value.replace(/[-.0]/g,'').length===0;
+}
+
+function groupIndianDigits(value:string){
+  if(value.length<=3)return value;
+  const finalGroup=value.slice(-3);
+  const leading=value.slice(0,-3).replace(/\B(?=(\d{2})+(?!\d))/g,',');
+  return `${leading},${finalGroup}`;
+}
+
+function money(value:string,currency:string){
+  const match=/^(-?)([0-9]+)(?:\.([0-9]{1,4}))?$/.exec(value);
+  if(!match)return `${currency} ${value}`;
+
+  const [,sign,whole,fraction='']=match;
+  return (
+    `${currency} ${sign}${groupIndianDigits(whole)}.`+
+    fraction.padEnd(2,'0')
+  );
 }
 
 function dateTime(value:string|null){

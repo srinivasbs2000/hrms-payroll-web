@@ -78,9 +78,9 @@ const evaluation:StatutoryEvaluationRequestView={
   completedBy:'payroll-admin',
   payrollResultCount:1,
   statutoryResultCount:1,
-  employeeTotal:1800,
-  employerTotal:1800,
-  postStatutoryNetTotal:88200,
+  employeeTotal:'1800',
+  employerTotal:'1800',
+  postStatutoryNetTotal:'88200',
   evidenceSetHash:'c'.repeat(64),
   versionNo:1
 };
@@ -96,8 +96,8 @@ const statutoryResult:StatutoryResultView={
   statutoryRuleId:'51400000-0000-0000-0000-000000000001',
   statutoryRuleVersionId:'51500000-0000-0000-0000-000000000001',
   currency:'INR',
-  employeeAmount:1800,
-  employerAmount:1800,
+  employeeAmount:'1800',
+  employerAmount:'1800',
   resultHash:'d'.repeat(64),
   createdAt:'2026-07-24T06:06:01Z'
 };
@@ -119,10 +119,10 @@ const batch:StatutoryLedgerBatchView={
   entryCount:1,
   balanceSnapshotCount:1,
   remittanceSummaryCount:1,
-  employeeDeltaTotal:1800,
-  employerDeltaTotal:1800,
-  cycleEmployeeTotal:1800,
-  cycleEmployerTotal:1800,
+  employeeDeltaTotal:'1800',
+  employerDeltaTotal:'1800',
+  cycleEmployeeTotal:'1800',
+  cycleEmployerTotal:'1800',
   ledgerSetHash:'e'.repeat(64),
   reconciliationHash:'f'.repeat(64),
   versionNo:1
@@ -134,16 +134,16 @@ const reconciliation:StatutoryReconciliationView={
   cycleId:cycle.id,
   evaluationRequestId:evaluation.id,
   currency:'INR',
-  sourceEmployeeTotal:1800,
-  sourceEmployerTotal:1800,
-  correctionEmployeeTotal:0,
-  correctionEmployerTotal:0,
-  expectedEmployeeTotal:1800,
-  expectedEmployerTotal:1800,
-  ledgerEmployeeTotal:1800,
-  ledgerEmployerTotal:1800,
-  employeeVariance:0,
-  employerVariance:0,
+  sourceEmployeeTotal:'1800',
+  sourceEmployerTotal:'1800',
+  correctionEmployeeTotal:'0',
+  correctionEmployerTotal:'0',
+  expectedEmployeeTotal:'1800',
+  expectedEmployerTotal:'1800',
+  ledgerEmployeeTotal:'1800',
+  ledgerEmployerTotal:'1800',
+  employeeVariance:'0',
+  employerVariance:'0',
   status:'MATCHED',
   reconciliationHash:'f'.repeat(64),
   createdAt:'2026-07-24T06:07:01Z'
@@ -160,9 +160,9 @@ function fakeApi(overrides:Partial<StatutoryApi>={}):StatutoryApi{
       evaluationRequestId:evaluation.id,
       payrollResultCount:1,
       statutoryResultCount:1,
-      employeeTotal:1800,
-      employerTotal:1800,
-      postStatutoryNetTotal:88200,
+      employeeTotal:'1800',
+      employerTotal:'1800',
+      postStatutoryNetTotal:'88200',
       evidenceSetHash:'c'.repeat(64),
       cycleVersionNo:5,
       completedAt:evaluation.completedAt,
@@ -175,10 +175,10 @@ function fakeApi(overrides:Partial<StatutoryApi>={}):StatutoryApi{
       attemptNo:1,
       batchKind:'INITIAL',
       postedEntryCount:1,
-      employeeDeltaTotal:1800,
-      employerDeltaTotal:1800,
-      cycleEmployeeTotal:1800,
-      cycleEmployerTotal:1800,
+      employeeDeltaTotal:'1800',
+      employerDeltaTotal:'1800',
+      cycleEmployeeTotal:'1800',
+      cycleEmployerTotal:'1800',
       ledgerSetHash:'e'.repeat(64),
       cycleVersionNo:6,
       completedAt:batch.completedAt,
@@ -190,10 +190,10 @@ function fakeApi(overrides:Partial<StatutoryApi>={}):StatutoryApi{
       ledgerBatchId:'53000000-0000-0000-0000-000000000002',
       attemptNo:2,
       postedEntryCount:1,
-      employeeDeltaTotal:-10,
-      employerDeltaTotal:0,
-      cycleEmployeeTotal:1790,
-      cycleEmployerTotal:1800,
+      employeeDeltaTotal:'-10',
+      employerDeltaTotal:'0',
+      cycleEmployeeTotal:'1790',
+      cycleEmployerTotal:'1800',
       ledgerSetHash:'1'.repeat(64),
       cycleVersionNo:7,
       completedAt:'2026-07-24T06:08:00Z',
@@ -304,4 +304,38 @@ test('requires a non-zero signed delta and bounded correction reason',async()=>{
     'signed correction delta must be non-zero'
   );
   expect(api.correct).not.toHaveBeenCalled();
+});
+
+test('sends exact decimal strings without binary conversion',async()=>{
+  const api=fakeApi();
+  render(<StatutoryWorkspacePage
+    api={api}
+    permissions={new Set([
+      ...readPermissions,
+      'statutory-ledger.correct'
+    ])}
+  />);
+
+  fireEvent.click(await screen.findByRole('button',{name:/2026-07/}));
+  fireEvent.change(await screen.findByLabelText('Employee delta'),{
+    target:{value:'-10.1250'}
+  });
+  fireEvent.change(await screen.findByLabelText('Employer delta'),{
+    target:{value:'0.1000'}
+  });
+  fireEvent.change(await screen.findByLabelText('Correction reason'),{
+    target:{value:'Approved exact decimal adjustment'}
+  });
+  fireEvent.click(screen.getByRole('button',{name:'Post signed correction'}));
+
+  await waitFor(()=>expect(api.correct).toHaveBeenCalledWith(
+    cycle.id,
+    cycle.versionNo,
+    {
+      statutoryResultId:statutoryResult.id,
+      employeeAmountDelta:'-10.1250',
+      employerAmountDelta:'0.1000',
+      reason:'Approved exact decimal adjustment'
+    }
+  ));
 });
