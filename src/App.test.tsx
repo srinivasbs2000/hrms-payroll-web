@@ -13,7 +13,11 @@ function client(authenticated:boolean):PayrollKeycloakClient{
       preferred_username:'payroll.admin',
       name:'Payroll Administrator',
       tenant_id:'tenant-1',
-      permissions:['payroll-cycle.read','payroll-result.read']
+      permissions:[
+        'payroll-cycle.read',
+        'payroll-result.read',
+        'statutory-evaluation.read'
+      ]
     }:undefined,
     init:vi.fn().mockResolvedValue(authenticated),
     login:vi.fn().mockResolvedValue(undefined),
@@ -50,6 +54,8 @@ test('renders only permitted navigation for an authenticated user',()=>{
   expect(screen.getByText('Payroll Administrator')).toBeInTheDocument();
   expect(screen.getByText('Tenant tenant-1')).toBeInTheDocument();
   expect(screen.getByRole('link',{name:'Payroll execution'}))
+    .toBeInTheDocument();
+  expect(screen.getByRole('link',{name:'Statutory'}))
     .toBeInTheDocument();
   expect(screen.getByRole('link',{name:'Draft payslip'}))
     .toBeInTheDocument();
