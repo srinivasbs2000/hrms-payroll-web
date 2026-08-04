@@ -81,3 +81,10 @@ textarea{width:100%;min-height:7rem;padding:.7rem;border:1px solid #aebbb3;borde
 @media(max-width:1050px){.statutory-command-grid{grid-template-columns:1fr}}
 @media(max-width:900px){.statutory-layout{grid-template-columns:1fr}.statutory-summary{grid-template-columns:1fr}}
 @media(max-width:760px){.signed-delta-grid{grid-template-columns:1fr}}
+/* P5-A2 compensation catalogue */
+.catalogue-form{grid-template-columns:repeat(4,minmax(0,1fr))}
+.catalogue-form .button-row{grid-column:1/-1}
+.catalogue-form>button[type=submit]{grid-column:1/-1;justify-self:start}
+.catalogue-form h3,.catalogue-form h4{grid-column:1/-1}
+@media(max-width:1050px){.catalogue-form{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.catalogue-form{grid-template-columns:1fr}}

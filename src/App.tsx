@@ -5,6 +5,7 @@ import {EmployeePayrollPage} from './features/employee-payroll/EmployeePayrollPa
 import {SetupPage} from './features/organisation/SetupPage';
 import {PayGroupPage} from './features/pay-group/PayGroupPage';
 import {PayComponentPage} from './features/pay-component/PayComponentPage';
+import {PayrollBasePage} from './features/payroll-base/PayrollBasePage';
 import {SalaryStructurePage} from './features/salary-structure/SalaryStructurePage';
 import {PayrollCalendarPage} from './features/payroll-calendar/PayrollCalendarPage';
 import {PayrollExecutionPage} from './features/payroll-execution/PayrollExecutionPage';
@@ -15,6 +16,7 @@ const navigation=[
   {to:'/payroll-calendars',label:'Payroll calendars',permission:'calendar.read'},
   {to:'/pay-groups',label:'Pay groups',permission:'pay-group.read'},
   {to:'/pay-components',label:'Pay components',permission:'compensation.component.read'},
+  {to:'/payroll-bases',label:'Payroll bases',permission:'compensation.base.read'},
   {to:'/salary-structures',label:'Salary structures',permission:'compensation.structure.read'},
   {to:'/employee-payroll',label:'Employee payroll',permission:'employee-payroll.relationship.read'},
   {to:'/payroll-execution',label:'Payroll execution',permission:'payroll-cycle.read'},
@@ -74,6 +76,7 @@ export function App(){
         <Route path="/payroll-calendars" element={<PayrollCalendarPage/>}/>
         <Route path="/pay-groups" element={<PayGroupPage/>}/>
         <Route path="/pay-components" element={<PayComponentPage/>}/>
+        <Route path="/payroll-bases" element={<PayrollBasePage/>}/>
         <Route path="/salary-structures" element={<SalaryStructurePage/>}/>
         <Route path="/employee-payroll" element={<EmployeePayrollPage/>}/>
         <Route path="/payroll-execution" element={<PayrollExecutionPage/>}/>

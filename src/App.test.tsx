@@ -14,6 +14,7 @@ function client(authenticated:boolean):PayrollKeycloakClient{
       name:'Payroll Administrator',
       tenant_id:'tenant-1',
       permissions:[
+        'compensation.base.read',
         'payroll-cycle.read',
         'payroll-result.read',
         'statutory-evaluation.read'
@@ -29,36 +30,19 @@ function client(authenticated:boolean):PayrollKeycloakClient{
 
 test('shows a real Keycloak sign-in boundary before payroll routes',async()=>{
   const authClient=client(false);
-  render(
-    <AuthProvider client={authClient} initialAuthenticated={false}>
-      <MemoryRouter><App/></MemoryRouter>
-    </AuthProvider>
-  );
-
-  expect(screen.getByRole('heading',{name:'Payroll foundation'}))
-    .toBeInTheDocument();
+  render(<AuthProvider client={authClient} initialAuthenticated={false}><MemoryRouter><App/></MemoryRouter></AuthProvider>);
+  expect(screen.getByRole('heading',{name:'Payroll foundation'})).toBeInTheDocument();
   expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
-
   fireEvent.click(screen.getByRole('button',{name:'Sign in with Keycloak'}));
   await waitFor(()=>expect(authClient.login).toHaveBeenCalled());
 });
 
-test('renders only permitted navigation for an authenticated user',()=>{
+test('renders named payroll bases only when permission is present',()=>{
   const authClient=client(true);
-  render(
-    <AuthProvider client={authClient} initialAuthenticated>
-      <MemoryRouter initialEntries={['/draft-payslip']}><App/></MemoryRouter>
-    </AuthProvider>
-  );
-
+  render(<AuthProvider client={authClient} initialAuthenticated><MemoryRouter initialEntries={['/draft-payslip']}><App/></MemoryRouter></AuthProvider>);
   expect(screen.getByText('Payroll Administrator')).toBeInTheDocument();
   expect(screen.getByText('Tenant tenant-1')).toBeInTheDocument();
-  expect(screen.getByRole('link',{name:'Payroll execution'}))
-    .toBeInTheDocument();
-  expect(screen.getByRole('link',{name:'Statutory'}))
-    .toBeInTheDocument();
-  expect(screen.getByRole('link',{name:'Draft payslip'}))
-    .toBeInTheDocument();
-  expect(screen.queryByRole('link',{name:'Organisation'}))
-    .not.toBeInTheDocument();
+  expect(screen.getByRole('link',{name:'Payroll bases'})).toBeInTheDocument();
+  expect(screen.getByRole('link',{name:'Payroll execution'})).toBeInTheDocument();
+  expect(screen.queryByRole('link',{name:'Organisation'})).not.toBeInTheDocument();
 });
