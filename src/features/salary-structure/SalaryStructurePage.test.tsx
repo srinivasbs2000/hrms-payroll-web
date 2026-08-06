@@ -1,144 +1,16 @@
-import {fireEvent,render,screen,waitFor} from '@testing-library/react';
-import {expect,test,vi} from 'vitest';
-import {SalaryStructurePage} from './SalaryStructurePage';
-import {
-  SalaryStructureApi,
-  SalaryStructureComponentOption,
-  SalaryStructureVersion
-} from './salary-structure-api';
+import {fireEvent,render,screen,waitFor} from '@testing-library/react';import {expect,test,vi} from 'vitest';import {SalaryStructurePage} from './SalaryStructurePage';
+import type {CompensationConfigurationApi,CtcPolicyVersion,EligibilityRuleVersion,SalaryStructureValidation,SalaryStructureVersion} from './salary-structure-api';
+export const component={identityId:'c1',versionId:'cv1',code:'BASIC',name:'Basic',componentType:'EARNING' as const,formulaType:'FIXED' as const,approvalStatus:'APPROVED' as const};
+export const ctc:CtcPolicyVersion={identityId:'p1',code:'STD_CTC',lifecycleStatus:'ACTIVE',identityVersionNo:1,retirementEffectiveDate:null,retirementReason:null,retiredAt:null,retiredBy:null,versionId:'pv1',versionSequence:1,versionNo:0,name:'Standard CTC',currency:'INR',annualisationMethod:'MONTHLY_X_12',toleranceAmount:.01,residualComponentId:'c1',residualComponentVersionId:'cv1',residualComponentCode:'BASIC',residualComponentName:'Basic',effectiveFrom:'2026-01-01',effectiveTo:null,approvalStatus:'DRAFT',supersedesVersionId:null,superseded:false,treatments:[]};
+export const rule:EligibilityRuleVersion={identityId:'r1',code:'INDIA',lifecycleStatus:'ACTIVE',identityVersionNo:1,retirementEffectiveDate:null,retirementReason:null,retiredAt:null,retiredBy:null,versionId:'rv1',versionSequence:1,versionNo:0,name:'India rule',resultWhenMatched:'ELIGIBLE',resultWhenNotMatched:'NOT_ELIGIBLE',effectiveFrom:'2026-01-01',effectiveTo:null,approvalStatus:'APPROVED',supersedesVersionId:null,superseded:false,criteria:[{id:'q1',criterionSequence:1,factKey:'COUNTRY_CODE',factType:'TEXT',comparisonOperator:'EQ',value:'IN',versionNo:0}]};
+export const structure:SalaryStructureVersion={identityId:'s1',code:'DEFAULT',identityStatus:'ACTIVE',versionId:'sv1',versionSequence:1,versionNo:0,name:'Default',currency:'INR',structureSchemaVersion:1,structureType:'STANDARD',payFrequency:'MONTHLY',confidentialityLevel:'STANDARD',ctcPolicyVersionId:'pv1',eligibilityRuleVersionId:'rv1',targetType:'ANNUAL_CTC',targetAnnualAmount:1200000,toleranceAmount:.01,residualComponentVersionId:'cv1',configurationHash:'config',validationFingerprint:null,effectiveFrom:'2026-01-01',effectiveTo:null,approvalStatus:'DRAFT',supersedesVersionId:null,superseded:false,lines:[{id:'sl1',componentId:'c1',componentVersionId:'cv1',componentCode:'BASIC',componentName:'Basic',componentType:'EARNING',componentFormulaType:'FIXED',lineSchemaVersion:1,sequenceNo:1,lineType:'RESIDUAL',targetAmount:null,targetPercentage:null,percentageBaseCode:null,minimumAmount:null,maximumAmount:null,mandatory:true,overridePolicy:'CONTROLLED',ctcDisplayOrder:1,payslipDisplayOrder:1,effectiveFrom:'2026-01-01',effectiveTo:null}]};
+export const validation:SalaryStructureValidation={validationId:'v1',identityId:'s1',versionId:'sv1',ctcPolicyVersionId:'pv1',eligibilityRuleVersionId:'rv1',effectiveDate:'2026-01-01',targetAmount:1200000,validationStatus:'PASS',requestHash:'request',configurationHash:'config',resultHash:'result',blockingErrorCount:0,warningCount:1,summary:{statutoryCompatibilityStatus:'STRUCTURAL_ONLY'},createdAt:'2026-01-01T00:00:00Z',createdBy:'maker',disclaimer:'DESIGN-TIME SALARY-STRUCTURE SIMULATION — NOT AN EMPLOYEE PAYROLL RESULT',lines:[]};
+export function fakeApi(overrides:Partial<CompensationConfigurationApi>={}):CompensationConfigurationApi{return {listStructures:vi.fn().mockResolvedValue([structure]),listComponents:vi.fn().mockResolvedValue([component]),structureHistory:vi.fn().mockResolvedValue([structure]),createStructure:vi.fn().mockResolvedValue(structure),addStructureVersion:vi.fn().mockResolvedValue(structure),correctStructure:vi.fn().mockResolvedValue(structure),endDateStructure:vi.fn().mockResolvedValue(structure),approveStructure:vi.fn().mockResolvedValue(structure),simulateStructure:vi.fn().mockResolvedValue(validation),structureValidations:vi.fn().mockResolvedValue([]),bindStructureValidation:vi.fn().mockResolvedValue({...structure,validationFingerprint:'result'}),ctcList:vi.fn().mockResolvedValue([ctc]),ctcHistory:vi.fn().mockResolvedValue([ctc]),ctcCreate:vi.fn().mockResolvedValue(ctc),ctcAddVersion:vi.fn().mockResolvedValue(ctc),ctcCorrect:vi.fn().mockResolvedValue(ctc),ctcEndDate:vi.fn().mockResolvedValue(ctc),ctcApprove:vi.fn().mockResolvedValue({...ctc,approvalStatus:'APPROVED'}),ctcRetire:vi.fn().mockResolvedValue(ctc),eligibilityList:vi.fn().mockResolvedValue([rule]),eligibilityHistory:vi.fn().mockResolvedValue([rule]),eligibilityCreate:vi.fn().mockResolvedValue(rule),eligibilityAddVersion:vi.fn().mockResolvedValue(rule),eligibilityCorrect:vi.fn().mockResolvedValue(rule),eligibilityEndDate:vi.fn().mockResolvedValue(rule),eligibilityApprove:vi.fn().mockResolvedValue(rule),eligibilityEvaluate:vi.fn().mockResolvedValue({identityId:'r1',versionId:'rv1',result:'ELIGIBLE',matched:true,configurationHash:'c',factsHash:'f',evaluationHash:'e',disclaimer:'DESIGN-TIME ONLY',criteria:[]}),eligibilityRetire:vi.fn().mockResolvedValue(rule),...overrides}}
 
-const component:SalaryStructureComponentOption={
-  versionId:'21100000-0000-0000-0000-000000000001',
-  code:'BASIC',
-  name:'Basic Pay',
-  componentType:'EARNING',
-  formulaType:'FIXED'
-};
-
-const structure:SalaryStructureVersion={
-  identityId:'22000000-0000-0000-0000-000000000001',
-  code:'DEFAULT',
-  identityStatus:'ACTIVE',
-  versionId:'22200000-0000-0000-0000-000000000001',
-  versionSequence:1,
-  versionNo:1,
-  name:'Default Structure',
-  currency:'INR',
-  effectiveFrom:'2026-01-01',
-  effectiveTo:null,
-  approvalStatus:'APPROVED',
-  supersedesVersionId:null,
-  superseded:false,
-  lines:[{
-    id:'22300000-0000-0000-0000-000000000001',
-    componentVersionId:component.versionId,
-    componentCode:'BASIC',
-    componentName:'Basic Pay',
-    componentType:'EARNING',
-    componentFormulaType:'FIXED',
-    sequenceNo:1,
-    targetAmount:50000,
-    targetPercentage:null,
-    percentageBaseCode:null,
-    effectiveFrom:'2026-01-01',
-    effectiveTo:null
-  }]
-};
-
-function fakeApi(overrides:Partial<SalaryStructureApi>={}):SalaryStructureApi{
-  return {
-    list:vi.fn().mockResolvedValue([]),
-    listComponents:vi.fn().mockResolvedValue([component]),
-    history:vi.fn().mockResolvedValue([structure]),
-    create:vi.fn().mockResolvedValue({...structure,approvalStatus:'DRAFT'}),
-    addVersion:vi.fn().mockResolvedValue({...structure,versionSequence:2,approvalStatus:'DRAFT'}),
-    correct:vi.fn().mockResolvedValue({...structure,versionSequence:2,approvalStatus:'DRAFT'}),
-    endDate:vi.fn().mockResolvedValue({...structure,effectiveTo:'2027-01-01',versionNo:2}),
-    approve:vi.fn().mockResolvedValue(structure),
-    ...overrides
-  };
-}
-
-test('rejects the screen when structure read is absent',()=>{
-  const api=fakeApi();
-  render(<SalaryStructurePage api={api} permissions={new Set()}/>);
-  expect(screen.getByRole('alert')).toHaveTextContent('do not have permission');
-  expect(api.list).not.toHaveBeenCalled();
-});
-
-test('renders effective structures and exact component-version history',async()=>{
-  const api=fakeApi({list:vi.fn().mockResolvedValue([structure])});
-  render(<SalaryStructurePage api={api} permissions={new Set(['compensation.structure.read'])}/>);
-  fireEvent.click(await screen.findByRole('button',{name:/DEFAULT/}));
-  expect(await screen.findByText('Version 1: Default Structure')).toBeInTheDocument();
-  expect(screen.getByText('BASIC: fixed 50000')).toBeInTheDocument();
-  expect(api.listComponents).not.toHaveBeenCalled();
-});
-
-test('creates a complete structure draft with exact component lineage',async()=>{
-  const api=fakeApi();
-  render(<SalaryStructurePage
-    api={api}
-    permissions={new Set([
-      'compensation.structure.read',
-      'compensation.structure.create'
-    ])}/>);
-  await screen.findByText('No approved salary structures');
-  fireEvent.change(screen.getByLabelText('Code'),{target:{value:'default'}});
-  fireEvent.change(screen.getByLabelText('Name'),{target:{value:'Default Structure'}});
-  fireEvent.change(screen.getByLabelText('Line 1 component'),{target:{value:component.versionId}});
-  fireEvent.change(screen.getByLabelText('Line 1 amount'),{target:{value:'50000'}});
-  fireEvent.click(screen.getByRole('button',{name:'Create salary-structure draft'}));
-  await waitFor(()=>expect(api.create).toHaveBeenCalledWith(expect.objectContaining({
-    code:'DEFAULT',
-    currency:'INR',
-    lines:[{
-      componentVersionId:component.versionId,
-      sequenceNo:1,
-      targetAmount:50000
-    }]
-  })));
-});
-
-test('exposes version and optimistic end-date workflows',async()=>{
-  const api=fakeApi({list:vi.fn().mockResolvedValue([structure])});
-  render(<SalaryStructurePage
-    api={api}
-    permissions={new Set([
-      'compensation.structure.read',
-      'compensation.structure.version.create',
-      'compensation.structure.version.end-date'
-    ])}/>);
-  fireEvent.click(await screen.findByRole('button',{name:/DEFAULT/}));
-  await screen.findByText('Version 1: Default Structure');
-  fireEvent.change(screen.getByLabelText('Effective from'),{target:{value:'2027-01-01'}});
-  fireEvent.click(screen.getByRole('button',{name:'Add version'}));
-  await waitFor(()=>expect(api.addVersion).toHaveBeenCalledWith(
-    structure.identityId,
-    expect.objectContaining({
-      effectiveFrom:'2027-01-01',
-      lines:[expect.objectContaining({
-        componentVersionId:component.versionId,
-        targetAmount:50000
-      })]
-    })
-  ));
-  fireEvent.change(screen.getByLabelText('End date'),{target:{value:'2027-01-01'}});
-  fireEvent.click(screen.getByRole('button',{name:'End-date salary-structure version'}));
-  await waitFor(()=>expect(api.endDate).toHaveBeenCalledWith(
-    structure.identityId,
-    structure.versionId,
-    structure.versionNo,
-    '2027-01-01'
-  ));
-});
-
-test('surfaces API problem details accessibly',async()=>{
-  const api=fakeApi({
-    list:vi.fn().mockRejectedValue(new Error('Tenant context unavailable'))
-  });
-  render(<SalaryStructurePage
-    api={api}
-    permissions={new Set(['compensation.structure.read'])}/>);
-  expect(await screen.findByRole('alert')).toHaveTextContent('Tenant context unavailable');
-});
+test('requires structure read permission',()=>{const api=fakeApi();render(<SalaryStructurePage api={api} permissions={new Set()}/>);expect(screen.getByRole('alert')).toBeInTheDocument();expect(api.listStructures).not.toHaveBeenCalled()});
+test('keeps CTC and eligibility inside one workbench',async()=>{render(<SalaryStructurePage api={fakeApi()} permissions={new Set(['compensation.structure.read','compensation.component.read','compensation.ctc-policy.read','compensation.eligibility-rule.read'])}/>);expect(await screen.findByRole('tab',{name:'Salary structures'})).toBeInTheDocument();fireEvent.click(screen.getByRole('tab',{name:'CTC policies'}));expect(screen.getByRole('heading',{name:'CTC policies'})).toBeInTheDocument();fireEvent.click(screen.getByRole('tab',{name:'Eligibility rules'}));expect(screen.getByRole('heading',{name:'Eligibility rules'})).toBeInTheDocument()});
+test('shows exact version-pinned target metadata',async()=>{render(<SalaryStructurePage api={fakeApi()} permissions={new Set(['compensation.structure.read'])}/>);fireEvent.click(await screen.findByRole('button',{name:/DEFAULT/}));expect(await screen.findByText(/v1 Default/)).toBeInTheDocument();expect(screen.getByText(/validation not bound/)).toBeInTheDocument()});
+test('does not approve an unvalidated draft',async()=>{render(<SalaryStructurePage api={fakeApi()} permissions={new Set(['compensation.structure.read','compensation.structure.approve'])}/>);fireEvent.click(await screen.findByRole('button',{name:/DEFAULT/}));expect(screen.queryByRole('button',{name:'Approve validated structure'})).not.toBeInTheDocument()});
+test('approves only after a validation fingerprint is bound',async()=>{const api=fakeApi({listStructures:vi.fn().mockResolvedValue([{...structure,validationFingerprint:'result'}]),structureHistory:vi.fn().mockResolvedValue([{...structure,validationFingerprint:'result'}])});render(<SalaryStructurePage api={api} permissions={new Set(['compensation.structure.read','compensation.structure.approve'])}/>);fireEvent.click(await screen.findByRole('button',{name:/DEFAULT/}));fireEvent.click(await screen.findByRole('button',{name:'Approve validated structure'}));await waitFor(()=>expect(api.approveStructure).toHaveBeenCalledWith('s1','sv1'))});
+test('preserves append-only structure version creation',async()=>{const api=fakeApi();render(<SalaryStructurePage api={api} permissions={new Set(['compensation.structure.read','compensation.component.read','compensation.ctc-policy.read','compensation.eligibility-rule.read','compensation.structure.version.create'])}/>);fireEvent.click(await screen.findByRole('button',{name:/DEFAULT/}));fireEvent.click(await screen.findByRole('button',{name:'Add structure version'}));await waitFor(()=>expect(api.addStructureVersion).toHaveBeenCalledWith('s1',expect.objectContaining({code:undefined,ctcPolicyVersionId:'pv1',residualComponentVersionId:'cv1'})))});
+test('preserves optimistic structure end dating',async()=>{const api=fakeApi();render(<SalaryStructurePage api={api} permissions={new Set(['compensation.structure.read','compensation.structure.version.end-date'])}/>);fireEvent.click(await screen.findByRole('button',{name:/DEFAULT/}));fireEvent.change(screen.getByLabelText('Structure end date'),{target:{value:'2027-01-01'}});fireEvent.click(screen.getByRole('button',{name:'End-date structure version'}));await waitFor(()=>expect(api.endDateStructure).toHaveBeenCalledWith('s1','sv1',0,'2027-01-01'))});

@@ -1,358 +1,280 @@
-import {FormEvent,useCallback,useEffect,useMemo,useState} from 'react';
+import {useCallback,useEffect,useMemo,useState} from 'react';
+import type {FormEvent} from 'react';
 import {currentPermissions} from '../organisation/organisation-api';
-import {
-  httpSalaryStructureApi,
-  SalaryStructureApi,
-  SalaryStructureComponentOption,
-  SalaryStructureLineView,
-  SalaryStructureVersion,
-  SalaryStructureWrite
+import {CtcPolicyPanel} from './CtcPolicyPanel';
+import {EligibilityRulePanel} from './EligibilityRulePanel';
+import {SalaryStructureSimulationPanel} from './SalaryStructureSimulationPanel';
+import {httpCompensationConfigurationApi} from './salary-structure-api';
+import type {
+  CompensationConfigurationApi,CtcPolicyVersion,EligibilityRuleVersion,
+  OverridePolicy,SalaryLineType,SalaryStructureComponentOption,
+  SalaryStructureLineView,SalaryStructureVersion,SalaryStructureWrite
 } from './salary-structure-api';
 
-type Props={api?:SalaryStructureApi;permissions?:Set<string>};
-type TargetMode='FIXED'|'PERCENTAGE'|'RESIDUAL';
+type Props={api?:CompensationConfigurationApi;permissions?:Set<string>};
+type Tab='STRUCTURES'|'CTC'|'ELIGIBILITY';
 type DraftLine={
-  key:string;
-  componentVersionId:string;
-  componentLabel:string;
-  mode:TargetMode;
-  value:string;
-  percentageBaseCode:string;
+  key:string;componentVersionId:string;lineType:SalaryLineType;value:string;
+  baseCode:string;minimumAmount:string;maximumAmount:string;mandatory:boolean;
+  overridePolicy:OverridePolicy;ctcDisplayOrder:number;payslipDisplayOrder:number;
 };
-
+type EditorAction={label:string;run:(input:SalaryStructureWrite)=>Promise<void>};
+let sequence=0;
 const today=()=>new Date().toISOString().slice(0,10);
-let lineKey=0;
-const nextKey=()=>`salary-line-${++lineKey}`;
-const emptyLine=():DraftLine=>({
-  key:nextKey(),
-  componentVersionId:'',
-  componentLabel:'',
-  mode:'FIXED',
-  value:'',
-  percentageBaseCode:''
+const newLine=(type:SalaryLineType):DraftLine=>({
+  key:`line-${++sequence}`,componentVersionId:'',lineType:type,value:'',baseCode:'',
+  minimumAmount:'',maximumAmount:'',mandatory:true,overridePolicy:'CONTROLLED',
+  ctcDisplayOrder:sequence,payslipDisplayOrder:sequence
 });
 
-export function SalaryStructurePage({api=httpSalaryStructureApi,permissions}:Props){
-  const effectivePermissions=useMemo(()=>permissions??currentPermissions(),[permissions]);
-  const [asOf,setAsOf]=useState(today);
+export function SalaryStructurePage({api=httpCompensationConfigurationApi,permissions}:Props){
+  const granted=useMemo(()=>permissions??currentPermissions(),[permissions]);
+  const [tab,setTab]=useState<Tab>('STRUCTURES');
+  const [asOf,setAsOf]=useState(today());
   const [items,setItems]=useState<SalaryStructureVersion[]>([]);
-  const [components,setComponents]=useState<SalaryStructureComponentOption[]>([]);
   const [history,setHistory]=useState<SalaryStructureVersion[]>([]);
+  const [components,setComponents]=useState<SalaryStructureComponentOption[]>([]);
+  const [ctc,setCtc]=useState<CtcPolicyVersion[]>([]);
+  const [rules,setRules]=useState<EligibilityRuleVersion[]>([]);
   const [selected,setSelected]=useState<SalaryStructureVersion|null>(null);
-  const [loading,setLoading]=useState(false);
+  const [endDateValue,setEndDateValue]=useState('');
   const [error,setError]=useState('');
-  const canRead=effectivePermissions.has('compensation.structure.read');
-  const canConfigure=[
-    'compensation.structure.create',
-    'compensation.structure.version.create',
-    'compensation.structure.version.correct'
-  ].some(permission=>effectivePermissions.has(permission));
+  const canRead=granted.has('compensation.structure.read');
 
   const load=useCallback(async()=>{
     if(!canRead)return;
-    setLoading(true);setError('');
+    setError('');
     try{
-      const [structures,availableComponents]=await Promise.all([
-        api.list(asOf),
-        canConfigure?api.listComponents(asOf):Promise.resolve([])
+      const [structures,componentOptions,policies,eligibility]=await Promise.all([
+        api.listStructures(asOf),
+        granted.has('compensation.component.read')?api.listComponents(asOf):Promise.resolve([]),
+        granted.has('compensation.ctc-policy.read')?api.ctcList(asOf):Promise.resolve([]),
+        granted.has('compensation.eligibility-rule.read')?api.eligibilityList(asOf):Promise.resolve([])
       ]);
-      setItems(structures);setComponents(availableComponents);
+      setItems(structures);
+      setComponents(componentOptions.filter(item=>
+        item.approvalStatus===undefined||item.approvalStatus==='APPROVED'));
+      setCtc(policies);
+      setRules(eligibility);
     }catch(value){setError((value as Error).message)}
-    finally{setLoading(false)}
-  },[api,asOf,canConfigure,canRead]);
+  },[api,asOf,canRead,granted]);
 
   useEffect(()=>{void load()},[load]);
 
   async function select(item:SalaryStructureVersion){
-    setSelected(item);setError('');
-    try{setHistory(await api.history(item.identityId))}
+    setSelected(item);setEndDateValue(item.effectiveTo??'');setError('');
+    try{setHistory(await api.structureHistory(item.identityId))}
     catch(value){setError((value as Error).message)}
   }
-
   async function create(input:SalaryStructureWrite){
-    setError('');
-    try{await api.create(input);await load()}
+    setError('');try{const result=await api.createStructure(input);await load();await select(result)}
     catch(value){setError((value as Error).message)}
   }
-
+  async function addVersion(input:SalaryStructureWrite){
+    if(!selected)return;setError('');
+    try{const result=await api.addStructureVersion(selected.identityId,input);await load();await select(result)}
+    catch(value){setError((value as Error).message)}
+  }
+  async function correct(input:SalaryStructureWrite){
+    if(!selected)return;setError('');
+    try{const result=await api.correctStructure(selected.identityId,selected.versionId,input);await load();await select(result)}
+    catch(value){setError((value as Error).message)}
+  }
+  async function endDate(event:FormEvent){
+    event.preventDefault();if(!selected)return;setError('');
+    try{const result=await api.endDateStructure(
+      selected.identityId,selected.versionId,selected.versionNo,endDateValue);
+      await load();await select(result)}
+    catch(value){setError((value as Error).message)}
+  }
   async function approve(item:SalaryStructureVersion){
-    setError('');
-    try{const result=await api.approve(item.identityId,item.versionId);await select(result);await load()}
+    setError('');try{const result=await api.approveStructure(item.identityId,item.versionId);await load();await select(result)}
     catch(value){setError((value as Error).message)}
   }
 
-  async function addVersion(item:SalaryStructureVersion,input:SalaryStructureWrite){
-    setError('');
-    try{const result=await api.addVersion(item.identityId,input);await select(result);await load()}
-    catch(value){setError((value as Error).message)}
-  }
+  if(!canRead)return <section className="card"><h2>Compensation design</h2>
+    <p role="alert">You do not have permission to view salary structures.</p></section>;
 
-  async function correct(item:SalaryStructureVersion,input:SalaryStructureWrite){
-    setError('');
-    try{const result=await api.correct(item.identityId,item.versionId,input);await select(result);await load()}
-    catch(value){setError((value as Error).message)}
+  const lifecycleActions:EditorAction[]=[];
+  if(selected&&granted.has('compensation.structure.version.create')){
+    lifecycleActions.push({label:'Add structure version',run:addVersion});
   }
-
-  async function endDate(item:SalaryStructureVersion,effectiveTo:string){
-    setError('');
-    try{const result=await api.endDate(item.identityId,item.versionId,item.versionNo,effectiveTo);await select(result);await load()}
-    catch(value){setError((value as Error).message)}
+  if(selected&&selected.approvalStatus==='DRAFT'
+      &&granted.has('compensation.structure.version.correct')){
+    lifecycleActions.push({label:'Correct future structure draft',run:correct});
   }
-
-  if(!canRead)return <section className="card" aria-labelledby="salary-structure-title">
-    <h2 id="salary-structure-title">Salary-structure foundation</h2>
-    <p role="alert">You do not have permission to view salary structures.</p>
-  </section>;
 
   return <section aria-labelledby="salary-structure-title">
-    <div className="page-heading">
-      <div>
-        <p className="eyebrow">Sprint 2 compensation</p>
-        <h2 id="salary-structure-title">Salary structures</h2>
-        <p>Immutable, effective-dated component compositions used for employee salary assignment.</p>
-      </div>
-      <label>Effective date<input aria-label="Salary-structure effective date" type="date" value={asOf} onChange={event=>setAsOf(event.target.value)}/></label>
-    </div>
-    {loading&&<p role="status">Loading salary structures...</p>}
+    <div className="page-heading"><div><p className="eyebrow">P5-A3 compensation design</p>
+      <h2 id="salary-structure-title">Salary structure, CTC and eligibility</h2>
+      <p>Version-pinned configuration with deterministic design-time validation.</p></div>
+      <label>Effective date<input aria-label="Compensation design effective date" type="date"
+        value={asOf} onChange={event=>setAsOf(event.target.value)}/></label></div>
     {error&&<p className="error" role="alert">{error}</p>}
-    {!loading&&items.length===0&&<div className="card empty">
-      <h3>No approved salary structures</h3>
-      <p>Create a complete draft with at least one approved component version, then approve it.</p>
-    </div>}
-    {items.length>0&&<div className="card">
-      <h3>Effective on {asOf}</h3>
-      <div className="pay-group-list">
-        {items.map(item=><button key={item.versionId} className="tree-item" onClick={()=>void select(item)}>
-          <strong>{item.code}</strong>
-          <span>{item.name}</span>
-          <small>{item.lines.length} component{item.lines.length===1?'':'s'} - {item.currency}</small>
-        </button>)}
-      </div>
-    </div>}
-    {effectivePermissions.has('compensation.structure.create')
-      ?<StructureEditor
-          title="Create salary-structure identity"
-          submitLabel="Create salary-structure draft"
-          requireCode
-          components={components}
-          onSubmit={create}/>
-      :<p className="permission-note">Create controls are hidden because <code>compensation.structure.create</code> is not granted.</p>}
-    {selected&&<Timeline
-      selected={selected}
-      history={history}
-      components={components}
-      permissions={effectivePermissions}
-      onApprove={approve}
-      onAddVersion={addVersion}
-      onCorrect={correct}
-      onEndDate={endDate}/>}
-  </section>;
-}
-
-function lineSummary(line:SalaryStructureLineView){
-  if(line.targetAmount!==null)return `${line.componentCode}: fixed ${line.targetAmount}`;
-  if(line.targetPercentage!==null)return `${line.componentCode}: ${line.targetPercentage}% of ${line.percentageBaseCode}`;
-  return `${line.componentCode}: residual`;
-}
-
-function Timeline({
-  selected,history,components,permissions,onApprove,onAddVersion,onCorrect,onEndDate
-}:{
-  selected:SalaryStructureVersion;
-  history:SalaryStructureVersion[];
-  components:SalaryStructureComponentOption[];
-  permissions:Set<string>;
-  onApprove:(item:SalaryStructureVersion)=>Promise<void>;
-  onAddVersion:(item:SalaryStructureVersion,input:SalaryStructureWrite)=>Promise<void>;
-  onCorrect:(item:SalaryStructureVersion,input:SalaryStructureWrite)=>Promise<void>;
-  onEndDate:(item:SalaryStructureVersion,effectiveTo:string)=>Promise<void>;
-}){
-  const [endDateValue,setEndDateValue]=useState(selected.effectiveTo??'');
-  useEffect(()=>setEndDateValue(selected.effectiveTo??''),[selected]);
-
-  const actions:{label:string;run:(input:SalaryStructureWrite)=>Promise<void>}[]=[];
-  if(permissions.has('compensation.structure.version.create')){
-    actions.push({label:'Add version',run:input=>onAddVersion(selected,input)});
-  }
-  if(selected.approvalStatus==='DRAFT'&&permissions.has('compensation.structure.version.correct')){
-    actions.push({label:'Correct future draft',run:input=>onCorrect(selected,input)});
-  }
-
-  return <section className="card" aria-labelledby="salary-structure-history-title">
-    <div className="section-heading">
-      <h3 id="salary-structure-history-title">{selected.code} version timeline</h3>
-      <span className={`badge ${selected.approvalStatus.toLowerCase()}`}>{selected.approvalStatus}</span>
+    <div className="workbench-tabs" role="tablist" aria-label="Compensation design sections">
+      <button role="tab" aria-selected={tab==='STRUCTURES'} onClick={()=>setTab('STRUCTURES')}>Salary structures</button>
+      <button role="tab" aria-selected={tab==='CTC'} onClick={()=>setTab('CTC')}>CTC policies</button>
+      <button role="tab" aria-selected={tab==='ELIGIBILITY'} onClick={()=>setTab('ELIGIBILITY')}>Eligibility rules</button>
     </div>
-    {history.length===0
-      ?<p role="status">Loading salary-structure version history...</p>
-      :<ol className="timeline">{history.map(item=><li key={item.versionId}>
-          <strong>Version {item.versionSequence}: {item.name}</strong>
-          <span>{item.effectiveFrom} to {item.effectiveTo??'open'}</span>
-          <span>{item.superseded?'Superseded':item.approvalStatus}</span>
-          <ul>{item.lines.map(line=><li key={line.id}>{lineSummary(line)}</li>)}</ul>
-          {item.approvalStatus==='DRAFT'&&permissions.has('compensation.structure.approve')
-            &&<button onClick={()=>void onApprove(item)}>Approve</button>}
-        </li>)}</ol>}
-    {actions.length>0&&<StructureEditor
-      key={selected.versionId}
-      title="Salary-structure version lifecycle"
-      components={components}
-      initial={selected}
-      actions={actions}/>}
-    {permissions.has('compensation.structure.version.end-date')&&<form
-      className="form-grid lifecycle-form"
-      aria-label="End-date salary-structure version"
-      onSubmit={event=>{event.preventDefault();void onEndDate(selected,endDateValue)}}>
-      <label>End date<input required type="date" value={endDateValue} onChange={event=>setEndDateValue(event.target.value)}/></label>
-      <button type="submit">End-date salary-structure version</button>
-    </form>}
+    {tab==='CTC'&&<CtcPolicyPanel api={api} permissions={granted} asOf={asOf} components={components}/>}
+    {tab==='ELIGIBILITY'&&<EligibilityRulePanel api={api} permissions={granted} asOf={asOf}/>}
+    {tab==='STRUCTURES'&&<>
+      <section className="card"><h3>Effective structures</h3>
+        {items.length===0?<p>No approved structures effective on {asOf}.</p>:
+          <div className="configuration-list">{items.map(item=><button
+            className="configuration-button" key={item.versionId} onClick={()=>void select(item)}>
+            <strong>{item.code}</strong><span>{item.name}</span>
+            <small>{item.targetType} · {item.targetAnnualAmount} INR</small></button>)}</div>}
+      </section>
+      {granted.has('compensation.structure.create')&&<StructureEditor
+        title="Create schema-1 structure draft" requireCode components={components}
+        policies={ctc} rules={rules} submitLabel="Create schema-1 structure draft" submit={create}/>}
+      {selected&&<section className="card">
+        <div className="section-heading"><h3>{selected.code} version timeline</h3>
+          <span className={`badge ${selected.approvalStatus.toLowerCase()}`}>{selected.approvalStatus}</span></div>
+        <ol className="compact-timeline">{history.map(item=><li key={item.versionId}>
+          <span><strong>v{item.versionSequence} {item.name}</strong>
+            <small>{item.structureType} · {item.payFrequency} · validation {item.validationFingerprint?'bound':'not bound'}</small></span>
+          {item.approvalStatus==='DRAFT'&&item.validationFingerprint
+            &&granted.has('compensation.structure.approve')
+            &&<button onClick={()=>void approve(item)}>Approve validated structure</button>}
+        </li>)}</ol>
+        {lifecycleActions.length>0&&<StructureEditor key={selected.versionId}
+          title="Salary-structure version lifecycle" initial={selected}
+          components={components} policies={ctc} rules={rules} actions={lifecycleActions}/>}
+        {granted.has('compensation.structure.version.end-date')&&<form
+          className="form-grid lifecycle-form" aria-label="End-date structure version"
+          onSubmit={event=>void endDate(event)}><label>Structure end date<input required type="date"
+          value={endDateValue} onChange={event=>setEndDateValue(event.target.value)}/></label>
+          <button type="submit">End-date structure version</button></form>}
+        <SalaryStructureSimulationPanel api={api} permissions={granted} structure={selected}/>
+      </section>}
+    </>}
   </section>;
 }
-
-type EditorProps={
-  title:string;
-  components:SalaryStructureComponentOption[];
-  requireCode?:boolean;
-  submitLabel?:string;
-  onSubmit?:(input:SalaryStructureWrite)=>Promise<void>;
-  initial?:SalaryStructureVersion;
-  actions?:{label:string;run:(input:SalaryStructureWrite)=>Promise<void>}[];
-};
 
 function StructureEditor({
-  title,components,requireCode=false,submitLabel,onSubmit,initial,actions=[]
-}:EditorProps){
+  title,components,policies,rules,requireCode=false,submitLabel,submit,initial,actions=[]
+}:{
+  title:string;components:SalaryStructureComponentOption[];policies:CtcPolicyVersion[];
+  rules:EligibilityRuleVersion[];requireCode?:boolean;submitLabel?:string;
+  submit?:(input:SalaryStructureWrite)=>Promise<void>;initial?:SalaryStructureVersion;
+  actions?:EditorAction[];key?:string;
+}){
   const [code,setCode]=useState(initial?.code??'');
   const [name,setName]=useState(initial?.name??'');
-  const [from,setFrom]=useState(initial?.effectiveFrom??today());
-  const [to,setTo]=useState(initial?.effectiveTo??'');
-  const [lines,setLines]=useState<DraftLine[]>(
-    initial?.lines.map(toDraftLine)??[emptyLine()]
-  );
-
+  const [policy,setPolicy]=useState(initial?.ctcPolicyVersionId??'');
+  const [rule,setRule]=useState(initial?.eligibilityRuleVersionId??'');
+  const [target,setTarget]=useState(String(initial?.targetAnnualAmount??1200000));
+  const [effectiveFrom,setEffectiveFrom]=useState(initial?.effectiveFrom??today());
+  const [effectiveTo,setEffectiveTo]=useState(initial?.effectiveTo??'');
+  const [lines,setLines]=useState<DraftLine[]>(initial?.lines.map(toDraftLine)
+    ??[newLine('FIXED'),newLine('RESIDUAL')]);
+  const [formError,setFormError]=useState('');
   const availableComponents=mergeComponents(components,initial?.lines??[]);
 
-  function updateLine(key:string,change:Partial<DraftLine>){
+  function update(key:string,change:Partial<DraftLine>){
     setLines(current=>current.map(line=>line.key===key?{...line,...change}:line));
   }
-
-  function removeLine(key:string){
-    setLines(current=>current.length===1?current:current.filter(line=>line.key!==key));
+  function remove(key:string){
+    setLines(current=>current.length<=2?current:current.filter(line=>line.key!==key));
   }
-
-  function build():SalaryStructureWrite{
+  function build():SalaryStructureWrite|null{
+    const residuals=lines.filter(line=>line.lineType==='RESIDUAL');
+    if(residuals.length!==1||lines.at(-1)?.lineType!=='RESIDUAL'){
+      setFormError('Exactly one residual line is required and it must be final.');return null;
+    }
+    setFormError('');
     return {
-      code:requireCode?code:undefined,
-      name,
-      currency:'INR',
-      effectiveFrom:from,
-      effectiveTo:to||undefined,
-      lines:lines.map((line,index)=>{
-        const result={
-          componentVersionId:line.componentVersionId,
-          sequenceNo:index+1
-        } as SalaryStructureWrite['lines'][number];
-        if(line.mode==='FIXED')result.targetAmount=Number(line.value);
-        if(line.mode==='PERCENTAGE'){
-          result.targetPercentage=Number(line.value);
-          result.percentageBaseCode=line.percentageBaseCode;
-        }
-        return result;
-      })
+      code:requireCode?code:undefined,name,currency:'INR',
+      structureType:initial?.structureType??'STANDARD',
+      payFrequency:initial?.payFrequency??'MONTHLY',
+      confidentialityLevel:initial?.confidentialityLevel??'STANDARD',
+      ctcPolicyVersionId:policy,eligibilityRuleVersionId:rule||undefined,
+      targetType:initial?.targetType??'ANNUAL_CTC',targetAnnualAmount:Number(target),
+      toleranceAmount:initial?.toleranceAmount??0.01,
+      residualComponentVersionId:residuals[0].componentVersionId,
+      effectiveFrom,effectiveTo:effectiveTo||undefined,
+      lines:lines.map((line,index)=>({
+        componentVersionId:line.componentVersionId,sequenceNo:index+1,lineType:line.lineType,
+        targetAmount:line.lineType==='FIXED'?Number(line.value):undefined,
+        targetPercentage:line.lineType==='PERCENTAGE'?Number(line.value):undefined,
+        percentageBaseCode:line.lineType==='PERCENTAGE'?line.baseCode:undefined,
+        minimumAmount:line.minimumAmount?Number(line.minimumAmount):undefined,
+        maximumAmount:line.maximumAmount?Number(line.maximumAmount):undefined,
+        mandatory:line.mandatory,overridePolicy:line.overridePolicy,
+        ctcDisplayOrder:line.ctcDisplayOrder||index+1,
+        payslipDisplayOrder:line.payslipDisplayOrder||index+1
+      }))
     };
   }
+  async function save(event:FormEvent){event.preventDefault();const input=build();if(input&&submit)await submit(input)}
+  async function run(action:EditorAction){const input=build();if(input)await action.run(input)}
 
-  async function submit(event:FormEvent){
-    event.preventDefault();
-    if(onSubmit)await onSubmit(build());
-  }
+  const policyOptions=policies.some(item=>item.versionId===policy)?policies:
+    policy?[...policies,{versionId:policy,code:'PINNED',versionSequence:0} as CtcPolicyVersion]:policies;
+  const ruleOptions=rules.some(item=>item.versionId===rule)?rules:
+    rule?[...rules,{versionId:rule,code:'PINNED',versionSequence:0} as EligibilityRuleVersion]:rules;
 
-  return <form className="card form-grid" onSubmit={event=>void submit(event)}>
-    <h3>{title}</h3>
-    {requireCode&&<label>Code<input required pattern="[A-Z][A-Z0-9_]{1,39}" value={code} onChange={event=>setCode(event.target.value.toUpperCase())}/></label>}
-    <label>Name<input required value={name} onChange={event=>setName(event.target.value)}/></label>
-    <label>Currency<input value="INR" readOnly/></label>
-    <label>Effective from<input required type="date" value={from} onChange={event=>setFrom(event.target.value)}/></label>
-    <label>Effective to<input type="date" value={to} onChange={event=>setTo(event.target.value)}/></label>
-    <fieldset>
-      <legend>Component lines</legend>
-      {lines.map((line,index)=><div className="form-grid lifecycle-form" key={line.key}>
-        <label>Line {index+1} component<select
-          required
-          aria-label={`Line ${index+1} component`}
-          value={line.componentVersionId}
-          onChange={event=>{
-            const option=availableComponents.find(component=>component.versionId===event.target.value);
-            updateLine(line.key,{
-              componentVersionId:event.target.value,
-              componentLabel:option?`${option.code} - ${option.name}`:''
-            });
-          }}>
-          <option value="">Select approved component version</option>
-          {availableComponents.map(component=><option key={component.versionId} value={component.versionId}>
-            {component.code} - {component.name} ({component.formulaType.toLowerCase().replaceAll('_',' ')})
-          </option>)}
-        </select></label>
-        <label>Line {index+1} target type<select
-          aria-label={`Line ${index+1} target type`}
-          value={line.mode}
-          onChange={event=>updateLine(line.key,{mode:event.target.value as TargetMode,value:'',percentageBaseCode:''})}>
-          <option value="FIXED">Fixed amount</option>
-          <option value="PERCENTAGE">Percentage of component</option>
-          <option value="RESIDUAL">Residual</option>
-        </select></label>
-        {line.mode!=='RESIDUAL'&&<label>Line {index+1} {line.mode==='FIXED'?'amount':'percentage'}<input
-          required
-          aria-label={`Line ${index+1} ${line.mode==='FIXED'?'amount':'percentage'}`}
-          type="number"
-          min={line.mode==='FIXED'?'0':'0.000001'}
-          max={line.mode==='PERCENTAGE'?'100':undefined}
-          step={line.mode==='FIXED'?'0.0001':'0.000001'}
-          value={line.value}
-          onChange={event=>updateLine(line.key,{value:event.target.value})}/></label>}
-        {line.mode==='PERCENTAGE'&&<label>Line {index+1} base component code<input
-          required
-          pattern="[A-Z][A-Z0-9_]{1,39}"
-          value={line.percentageBaseCode}
-          onChange={event=>updateLine(line.key,{percentageBaseCode:event.target.value.toUpperCase()})}/></label>}
-        <button type="button" disabled={lines.length===1} onClick={()=>removeLine(line.key)}>Remove line {index+1}</button>
-      </div>)}
-      <button type="button" onClick={()=>setLines(current=>[...current,emptyLine()])}>Add component line</button>
+  return <form className="card form-grid" onSubmit={event=>void save(event)}>
+    <h3>{title}</h3>{formError&&<p className="error" role="alert">{formError}</p>}
+    {requireCode&&<label>Structure code<input required value={code}
+      pattern="[A-Z][A-Z0-9_]{1,39}" onChange={event=>setCode(event.target.value.toUpperCase())}/></label>}
+    <label>Structure name<input required value={name} onChange={event=>setName(event.target.value)}/></label>
+    <label>CTC policy version<select required value={policy} onChange={event=>setPolicy(event.target.value)}>
+      <option value="">Select approved policy</option>{policyOptions.map(item=><option
+        key={item.versionId} value={item.versionId}>{item.code} v{item.versionSequence}</option>)}</select></label>
+    <label>Eligibility rule version<select value={rule} onChange={event=>setRule(event.target.value)}>
+      <option value="">No rule</option>{ruleOptions.map(item=><option key={item.versionId}
+        value={item.versionId}>{item.code} v{item.versionSequence}</option>)}</select></label>
+    <label>Target annual CTC<input required type="number" min="0.0001" step="0.0001"
+      value={target} onChange={event=>setTarget(event.target.value)}/></label>
+    <label>Structure effective from<input required type="date" value={effectiveFrom}
+      onChange={event=>setEffectiveFrom(event.target.value)}/></label>
+    <label>Structure effective to<input type="date" value={effectiveTo}
+      onChange={event=>setEffectiveTo(event.target.value)}/></label>
+    <fieldset><legend>Ordered calculation lines</legend>{lines.map((line,index)=><div
+      className="line-editor" key={line.key}>
+      <label>Line {index+1} component<select required aria-label={`Line ${index+1} component`}
+        value={line.componentVersionId} onChange={event=>update(line.key,{componentVersionId:event.target.value})}>
+        <option value="">Select approved component</option>{availableComponents.map(item=><option
+          key={item.versionId} value={item.versionId}>{item.code} - {item.name}</option>)}</select></label>
+      <label>Line {index+1} type<select aria-label={`Line ${index+1} type`} value={line.lineType}
+        onChange={event=>update(line.key,{lineType:event.target.value as SalaryLineType,value:'',baseCode:''})}>
+        <option>FIXED</option><option>PERCENTAGE</option><option>RESIDUAL</option></select></label>
+      {line.lineType!=='RESIDUAL'&&<label>Line {index+1} value<input required
+        aria-label={`Line ${index+1} value`} type="number" value={line.value}
+        onChange={event=>update(line.key,{value:event.target.value})}/></label>}
+      {line.lineType==='PERCENTAGE'&&<label>Line {index+1} base code<input required
+        aria-label={`Line ${index+1} base code`} value={line.baseCode}
+        onChange={event=>update(line.key,{baseCode:event.target.value.toUpperCase()})}/></label>}
+      <button type="button" disabled={lines.length<=2} onClick={()=>remove(line.key)}>Remove line {index+1}</button>
+    </div>)}
+      <button type="button" onClick={()=>setLines(current=>{
+        const residualIndex=current.findIndex(line=>line.lineType==='RESIDUAL');
+        const addition=newLine('FIXED');
+        return residualIndex<0?[...current,addition]:[
+          ...current.slice(0,residualIndex),addition,...current.slice(residualIndex)];
+      })}>Add structure line</button>
     </fieldset>
     {submitLabel&&<button type="submit">{submitLabel}</button>}
-    {actions.length>0&&<div className="button-row">
-      {actions.map(action=><button key={action.label} type="button" onClick={()=>void action.run(build())}>{action.label}</button>)}
-    </div>}
+    {actions.length>0&&<div className="button-row">{actions.map(action=><button
+      key={action.label} type="button" onClick={()=>void run(action)}>{action.label}</button>)}</div>}
   </form>;
 }
 
 function toDraftLine(line:SalaryStructureLineView):DraftLine{
-  const mode:TargetMode=line.targetAmount!==null?'FIXED':line.targetPercentage!==null?'PERCENTAGE':'RESIDUAL';
-  return {
-    key:nextKey(),
-    componentVersionId:line.componentVersionId,
-    componentLabel:`${line.componentCode} - ${line.componentName}`,
-    mode,
-    value:String(line.targetAmount??line.targetPercentage??''),
-    percentageBaseCode:line.percentageBaseCode??''
-  };
+  return {key:`line-${++sequence}`,componentVersionId:line.componentVersionId,
+    lineType:line.lineType,value:String(line.targetAmount??line.targetPercentage??''),
+    baseCode:line.percentageBaseCode??'',minimumAmount:String(line.minimumAmount??''),
+    maximumAmount:String(line.maximumAmount??''),mandatory:line.mandatory,
+    overridePolicy:line.overridePolicy,ctcDisplayOrder:line.ctcDisplayOrder,
+    payslipDisplayOrder:line.payslipDisplayOrder};
 }
-
-function mergeComponents(
-  components:SalaryStructureComponentOption[],
-  existing:SalaryStructureLineView[]
-){
-  const merged=[...components];
-  for(const line of existing){
-    if(!merged.some(component=>component.versionId===line.componentVersionId)){
-      merged.push({
-        versionId:line.componentVersionId,
-        code:line.componentCode,
-        name:line.componentName,
-        componentType:line.componentType,
-        formulaType:line.componentFormulaType
-      });
-    }
-  }
-  return merged;
+function mergeComponents(options:SalaryStructureComponentOption[],lines:SalaryStructureLineView[]){
+  const result=[...options];for(const line of lines){if(!result.some(item=>item.versionId===line.componentVersionId)){
+    result.push({identityId:line.componentId,versionId:line.componentVersionId,code:line.componentCode,
+      name:line.componentName,componentType:line.componentType,formulaType:line.componentFormulaType,
+      approvalStatus:'APPROVED'});}}
+  return result;
 }

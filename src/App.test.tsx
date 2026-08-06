@@ -1,48 +1,5 @@
-import {fireEvent,render,screen,waitFor} from '@testing-library/react';
-import {MemoryRouter} from 'react-router-dom';
-import {expect,test,vi} from 'vitest';
-import {App} from './App';
-import {AuthProvider} from './auth/AuthProvider';
-import type {PayrollKeycloakClient} from './auth/keycloak-client';
-
-function client(authenticated:boolean):PayrollKeycloakClient{
-  return {
-    authenticated,
-    token:authenticated?'token-1':undefined,
-    tokenParsed:authenticated?{
-      preferred_username:'payroll.admin',
-      name:'Payroll Administrator',
-      tenant_id:'tenant-1',
-      permissions:[
-        'compensation.base.read',
-        'payroll-cycle.read',
-        'payroll-result.read',
-        'statutory-evaluation.read'
-      ]
-    }:undefined,
-    init:vi.fn().mockResolvedValue(authenticated),
-    login:vi.fn().mockResolvedValue(undefined),
-    logout:vi.fn().mockResolvedValue(undefined),
-    updateToken:vi.fn().mockResolvedValue(false),
-    clearToken:vi.fn()
-  };
-}
-
-test('shows a real Keycloak sign-in boundary before payroll routes',async()=>{
-  const authClient=client(false);
-  render(<AuthProvider client={authClient} initialAuthenticated={false}><MemoryRouter><App/></MemoryRouter></AuthProvider>);
-  expect(screen.getByRole('heading',{name:'Payroll foundation'})).toBeInTheDocument();
-  expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button',{name:'Sign in with Keycloak'}));
-  await waitFor(()=>expect(authClient.login).toHaveBeenCalled());
-});
-
-test('renders named payroll bases only when permission is present',()=>{
-  const authClient=client(true);
-  render(<AuthProvider client={authClient} initialAuthenticated><MemoryRouter initialEntries={['/draft-payslip']}><App/></MemoryRouter></AuthProvider>);
-  expect(screen.getByText('Payroll Administrator')).toBeInTheDocument();
-  expect(screen.getByText('Tenant tenant-1')).toBeInTheDocument();
-  expect(screen.getByRole('link',{name:'Payroll bases'})).toBeInTheDocument();
-  expect(screen.getByRole('link',{name:'Payroll execution'})).toBeInTheDocument();
-  expect(screen.queryByRole('link',{name:'Organisation'})).not.toBeInTheDocument();
-});
+import {fireEvent,render,screen,waitFor} from '@testing-library/react';import {MemoryRouter} from 'react-router-dom';import {expect,test,vi} from 'vitest';import {App} from './App';import {AuthProvider} from './auth/AuthProvider';import type {PayrollKeycloakClient} from './auth/keycloak-client';
+function client(authenticated:boolean):PayrollKeycloakClient{return {authenticated,token:authenticated?'token':undefined,tokenParsed:authenticated?{preferred_username:'payroll.admin',name:'Payroll Administrator',tenant_id:'tenant-1',permissions:['compensation.structure.read','compensation.ctc-policy.read','compensation.eligibility-rule.read']}:undefined,init:vi.fn().mockResolvedValue(authenticated),login:vi.fn().mockResolvedValue(undefined),logout:vi.fn().mockResolvedValue(undefined),updateToken:vi.fn().mockResolvedValue(false),clearToken:vi.fn()}}
+test('keeps Keycloak as the route boundary',async()=>{const auth=client(false);render(<AuthProvider client={auth} initialAuthenticated={false}><MemoryRouter initialEntries={['/no-access']}><App/></MemoryRouter></AuthProvider>);fireEvent.click(screen.getByRole('button',{name:'Sign in with Keycloak'}));await waitFor(()=>expect(auth.login).toHaveBeenCalled())});
+test('exposes one compensation-design route for the P5-A3 workbench',()=>{render(<AuthProvider client={client(true)} initialAuthenticated><MemoryRouter initialEntries={['/no-access']}><App/></MemoryRouter></AuthProvider>);expect(screen.getByRole('link',{name:'Compensation design'})).toHaveAttribute('href','/salary-structures');expect(screen.queryByRole('link',{name:'CTC policies'})).not.toBeInTheDocument()});
+test('keeps tenant identity visible',()=>{render(<AuthProvider client={client(true)} initialAuthenticated><MemoryRouter initialEntries={['/no-access']}><App/></MemoryRouter></AuthProvider>);expect(screen.getByText('Tenant tenant-1')).toBeInTheDocument()});
