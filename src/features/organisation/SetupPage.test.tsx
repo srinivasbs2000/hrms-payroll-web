@@ -50,6 +50,12 @@ function fakeApi(
       asOf: '2026-07-19',
       legalEntities: [],
     }),
+    listJurisdictions: vi.fn().mockResolvedValue([]),
+    createJurisdiction: vi.fn(),
+    approveJurisdiction: vi.fn(),
+    listWorkLocations: vi.fn().mockResolvedValue([]),
+    createWorkLocation: vi.fn(),
+    approveWorkLocation: vi.fn(),
     history: vi.fn().mockResolvedValue([legal]),
     create: vi.fn().mockResolvedValue(legal),
     addVersion: vi.fn().mockResolvedValue({
@@ -408,4 +414,29 @@ test('surfaces API problem details as an accessible error', async () => {
   expect(
     await screen.findByRole('alert'),
   ).toHaveTextContent('Tenant context unavailable');
+});
+
+test('renders the separate work-location and jurisdiction foundation', async () => {
+  const api = fakeApi();
+  render(
+    <SetupPage
+      api={api}
+      permissions={new Set([
+        'organisation.read',
+        'organisation.create',
+      ])}
+    />,
+  );
+
+  expect(
+    await screen.findByText('Work locations & jurisdictions'),
+  ).toBeInTheDocument();
+  expect(api.listJurisdictions).toHaveBeenCalled();
+  expect(api.listWorkLocations).toHaveBeenCalled();
+  expect(
+    screen.getByLabelText('Establishment (optional)'),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByLabelText('Establishment version (optional)'),
+  ).not.toBeInTheDocument();
 });

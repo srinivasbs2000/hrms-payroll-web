@@ -10,6 +10,7 @@ import {SalaryStructurePage} from './features/salary-structure/SalaryStructurePa
 import {PayrollCalendarPage} from './features/payroll-calendar/PayrollCalendarPage';
 import {PayrollExecutionPage} from './features/payroll-execution/PayrollExecutionPage';
 import {StatutoryWorkspacePage} from './features/statutory/StatutoryWorkspacePage';
+import {StatutoryRegistrationPage} from './features/statutory-registration/StatutoryRegistrationPage';
 
 const navigation=[
   {to:'/organisation',label:'Organisation',permission:'organisation.read'},
@@ -21,6 +22,7 @@ const navigation=[
   {to:'/employee-payroll',label:'Employee payroll',permission:'employee-payroll.relationship.read'},
   {to:'/payroll-execution',label:'Payroll execution',permission:'payroll-cycle.read'},
   {to:'/statutory',label:'Statutory',permission:'statutory-evaluation.read'},
+  {to:'/statutory-registrations',label:'Statutory registrations',permission:'statutory-registration.read'},
   {to:'/draft-payslip',label:'Draft payslip',permission:'payroll-result.read'}
 ] as const;
 
@@ -51,6 +53,7 @@ export function App(){
       <Route path="/employee-payroll" element={<EmployeePayrollPage/>}/>
       <Route path="/payroll-execution" element={<PayrollExecutionPage/>}/>
       <Route path="/statutory" element={<StatutoryWorkspacePage/>}/>
+      <Route path="/statutory-registrations" element={<StatutoryRegistrationPage/>}/>
       <Route path="/draft-payslip" element={<DraftPayslipPage/>}/>
     </Routes></main></>;
 }

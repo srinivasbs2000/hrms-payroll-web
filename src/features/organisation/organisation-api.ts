@@ -74,8 +74,98 @@ export interface OrganisationRetirement {
   reason: string;
 }
 
+
+export interface PayrollJurisdictionVersionWrite {
+  name: string;
+  countryCode: string;
+  levelCode: string;
+  levelRank: number;
+  parentJurisdictionId?: string;
+  parentJurisdictionVersionId?: string;
+  effectiveFrom: string;
+  effectiveTo?: string;
+}
+
+export interface PayrollJurisdictionCreate {
+  code: string;
+  version: PayrollJurisdictionVersionWrite;
+}
+
+export interface PayrollJurisdictionView {
+  identityId: string;
+  code: string;
+  identityStatus: string;
+  identityVersionNo: number;
+  versionId: string;
+  versionSequence: number;
+  versionNo: number;
+  name: string;
+  countryCode: string;
+  levelCode: string;
+  levelRank: number;
+  parentJurisdictionId: string | null;
+  parentJurisdictionVersionId: string | null;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  approvalStatus: 'DRAFT' | 'APPROVED' | 'REJECTED';
+  superseded: boolean;
+}
+
+export interface WorkLocationVersionWrite {
+  name: string;
+  establishmentVersionId?: string;
+  payrollJurisdictionId: string;
+  payrollJurisdictionVersionId: string;
+  addressLine1?: string;
+  locality?: string;
+  stateCode?: string;
+  postalCode?: string;
+  countryCode: string;
+  effectiveFrom: string;
+  effectiveTo?: string;
+}
+
+export interface WorkLocationCreate {
+  code: string;
+  version: WorkLocationVersionWrite;
+}
+
+export interface WorkLocationView {
+  identityId: string;
+  code: string;
+  identityStatus: string;
+  identityVersionNo: number;
+  versionId: string;
+  versionSequence: number;
+  versionNo: number;
+  name: string;
+  establishmentVersionId: string | null;
+  payrollJurisdictionId: string;
+  payrollJurisdictionVersionId: string;
+  countryCode: string;
+  stateCode: string | null;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  approvalStatus: 'DRAFT' | 'APPROVED' | 'REJECTED';
+  superseded: boolean;
+}
+
 export interface OrganisationApi {
   hierarchy(asOf: string): Promise<OrganisationHierarchy>;
+  listJurisdictions(asOf: string): Promise<PayrollJurisdictionView[]>;
+  createJurisdiction(input: PayrollJurisdictionCreate): Promise<PayrollJurisdictionView>;
+  approveJurisdiction(
+    identityId: string,
+    versionId: string,
+    versionNo: number,
+  ): Promise<PayrollJurisdictionView>;
+  listWorkLocations(asOf: string): Promise<WorkLocationView[]>;
+  createWorkLocation(input: WorkLocationCreate): Promise<WorkLocationView>;
+  approveWorkLocation(
+    identityId: string,
+    versionId: string,
+    versionNo: number,
+  ): Promise<WorkLocationView>;
   history(
     collection: string,
     identityId: string,
@@ -168,6 +258,30 @@ async function request<T>(
 }
 
 export const httpOrganisationApi: OrganisationApi = {
+  listJurisdictions: asOf =>
+    request(`/payroll-jurisdictions?asOf=${encodeURIComponent(asOf)}`),
+  createJurisdiction: input =>
+    request('/payroll-jurisdictions', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  approveJurisdiction: (identityId, versionId, versionNo) =>
+    request(
+      `/payroll-jurisdictions/${identityId}/versions/${versionId}/approval`,
+      {method: 'POST', headers: {'If-Match': String(versionNo)}},
+    ),
+  listWorkLocations: asOf =>
+    request(`/work-locations?asOf=${encodeURIComponent(asOf)}`),
+  createWorkLocation: input =>
+    request('/work-locations', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  approveWorkLocation: (identityId, versionId, versionNo) =>
+    request(
+      `/work-locations/${identityId}/versions/${versionId}/approval`,
+      {method: 'POST', headers: {'If-Match': String(versionNo)}},
+    ),
   hierarchy: asOf =>
     request(
       `/organisation-hierarchy?asOf=${encodeURIComponent(asOf)}`,

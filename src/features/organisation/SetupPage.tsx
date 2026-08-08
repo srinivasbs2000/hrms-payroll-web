@@ -13,7 +13,9 @@ import {
   OrganisationApi,
   OrganisationVersion,
   OrganisationWrite,
+  PayrollJurisdictionView,
   ResponsibilityScope,
+  WorkLocationView,
 } from './organisation-api';
 
 type Props = {
@@ -268,6 +270,13 @@ export function SetupPage({
           </div>
         )}
 
+      <JurisdictionLocationFoundation
+        api={api}
+        asOf={asOf}
+        hierarchy={hierarchy}
+        permissions={effectivePermissions}
+      />
+
       {canCreate ? (
         <OrganisationForms
           hierarchy={hierarchy}
@@ -296,6 +305,257 @@ export function SetupPage({
   );
 }
 
+
+
+function JurisdictionLocationFoundation({
+  api,
+  asOf,
+  hierarchy,
+  permissions,
+}: {
+  api: OrganisationApi;
+  asOf: string;
+  hierarchy: Awaited<ReturnType<OrganisationApi['hierarchy']>> | null;
+  permissions: Set<string>;
+}) {
+  const [jurisdictions, setJurisdictions] = useState<PayrollJurisdictionView[]>([]);
+  const [locations, setLocations] = useState<WorkLocationView[]>([]);
+  const [jurisdictionDraft, setJurisdictionDraft] = useState<PayrollJurisdictionView | null>(null);
+  const [locationDraft, setLocationDraft] = useState<WorkLocationView | null>(null);
+  const [error, setError] = useState('');
+  const [jurisdictionCode, setJurisdictionCode] = useState('');
+  const [jurisdictionName, setJurisdictionName] = useState('');
+  const [countryCode, setCountryCode] = useState('IN');
+  const [levelCode, setLevelCode] = useState('COUNTRY');
+  const [parentVersionId, setParentVersionId] = useState('');
+  const [locationCode, setLocationCode] = useState('');
+  const [locationName, setLocationName] = useState('');
+  const [locationJurisdictionVersionId, setLocationJurisdictionVersionId] = useState('');
+  const [establishmentVersionId, setEstablishmentVersionId] = useState('');
+  const canCreate = permissions.has('organisation.create');
+  const canApprove = permissions.has('organisation.approve');
+
+  const establishments = useMemo(() => {
+    function collect(nodes: HierarchyNode[]): OrganisationVersion[] {
+      return nodes.flatMap(node => [
+        node.value,
+        ...collect(node.children),
+      ]);
+    }
+    return hierarchy
+      ? collect(hierarchy.legalEntities).filter(
+          item => item.kind === 'ESTABLISHMENT',
+        )
+      : [];
+  }, [hierarchy]);
+
+  const load = useCallback(async () => {
+    setError('');
+    try {
+      const [nextJurisdictions, nextLocations] = await Promise.all([
+        api.listJurisdictions(asOf),
+        api.listWorkLocations(asOf),
+      ]);
+      setJurisdictions(nextJurisdictions);
+      setLocations(nextLocations);
+    } catch (caught) {
+      setError((caught as Error).message);
+    }
+  }, [api, asOf]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function createJurisdiction(event: FormEvent) {
+    event.preventDefault();
+    const parent = jurisdictions.find(item => item.versionId === parentVersionId);
+    try {
+      const created = await api.createJurisdiction({
+        code: jurisdictionCode,
+        version: {
+          name: jurisdictionName,
+          countryCode,
+          levelCode,
+          levelRank: parent ? parent.levelRank + 1 : 1,
+          parentJurisdictionId: parent?.identityId,
+          parentJurisdictionVersionId: parent?.versionId,
+          effectiveFrom: asOf,
+        },
+      });
+      setJurisdictionDraft(created);
+      setJurisdictionCode('');
+      setJurisdictionName('');
+    } catch (caught) {
+      setError((caught as Error).message);
+    }
+  }
+
+  async function createLocation(event: FormEvent) {
+    event.preventDefault();
+    const jurisdiction = jurisdictions.find(
+      item => item.versionId === locationJurisdictionVersionId,
+    );
+    if (!jurisdiction) {
+      setError('Select an approved payroll jurisdiction');
+      return;
+    }
+    try {
+      const created = await api.createWorkLocation({
+        code: locationCode,
+        version: {
+          name: locationName,
+          establishmentVersionId: establishmentVersionId || undefined,
+          payrollJurisdictionId: jurisdiction.identityId,
+          payrollJurisdictionVersionId: jurisdiction.versionId,
+          countryCode: jurisdiction.countryCode,
+          effectiveFrom: asOf,
+        },
+      });
+      setLocationDraft(created);
+      setLocationCode('');
+      setLocationName('');
+    } catch (caught) {
+      setError((caught as Error).message);
+    }
+  }
+
+  async function approveJurisdiction() {
+    if (!jurisdictionDraft) return;
+    try {
+      const approved = await api.approveJurisdiction(
+        jurisdictionDraft.identityId,
+        jurisdictionDraft.versionId,
+        jurisdictionDraft.versionNo,
+      );
+      setJurisdictionDraft(approved);
+      await load();
+    } catch (caught) {
+      setError((caught as Error).message);
+    }
+  }
+
+  async function approveLocation() {
+    if (!locationDraft) return;
+    try {
+      const approved = await api.approveWorkLocation(
+        locationDraft.identityId,
+        locationDraft.versionId,
+        locationDraft.versionNo,
+      );
+      setLocationDraft(approved);
+      await load();
+    } catch (caught) {
+      setError((caught as Error).message);
+    }
+  }
+
+  return (
+    <section className="card" aria-labelledby="jurisdiction-location-title">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">P5-JRF-01 foundation</p>
+          <h3 id="jurisdiction-location-title">Work locations &amp; jurisdictions</h3>
+        </div>
+      </div>
+      <p>
+        Work locations remain separate from the legal hierarchy and resolve to
+        approved, effective-dated payroll jurisdictions.
+      </p>
+      {error && <p className="error" role="alert">{error}</p>}
+
+      <div className="two-column">
+        <div>
+          <h4>Effective payroll jurisdictions</h4>
+          {jurisdictions.length === 0 ? (
+            <p>No approved jurisdiction is effective on {asOf}.</p>
+          ) : (
+            <ul className="timeline">
+              {jurisdictions.map(item => (
+                <li key={item.versionId}>
+                  <strong>{item.code} · {item.name}</strong>
+                  <span>{item.levelCode} level {item.levelRank}</span>
+                  <span>{item.effectiveFrom} to {item.effectiveTo ?? 'open'}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {jurisdictionDraft && (
+            <div className="action-summary">
+              <span>Latest draft: {jurisdictionDraft.code} · {jurisdictionDraft.approvalStatus}</span>
+              {canApprove && jurisdictionDraft.approvalStatus === 'DRAFT' && (
+                <button type="button" onClick={() => void approveJurisdiction()}>
+                  Approve jurisdiction
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        <div>
+          <h4>Effective work locations</h4>
+          {locations.length === 0 ? (
+            <p>No approved work location is effective on {asOf}.</p>
+          ) : (
+            <ul className="timeline">
+              {locations.map(item => (
+                <li key={item.versionId}>
+                  <strong>{item.code} · {item.name}</strong>
+                  <span>Jurisdiction version {item.payrollJurisdictionVersionId}</span>
+                  <span>{item.effectiveFrom} to {item.effectiveTo ?? 'open'}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {locationDraft && (
+            <div className="action-summary">
+              <span>Latest draft: {locationDraft.code} · {locationDraft.approvalStatus}</span>
+              {canApprove && locationDraft.approvalStatus === 'DRAFT' && (
+                <button type="button" onClick={() => void approveLocation()}>
+                  Approve work location
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {canCreate && (
+        <div className="two-column">
+          <form className="form-grid" onSubmit={event => void createJurisdiction(event)}>
+            <h4>Create jurisdiction draft</h4>
+            <label>Jurisdiction code<input required value={jurisdictionCode} onChange={event => setJurisdictionCode(event.target.value.toUpperCase())}/></label>
+            <label>Jurisdiction name<input required value={jurisdictionName} onChange={event => setJurisdictionName(event.target.value)}/></label>
+            <label>Country code<input required maxLength={2} value={countryCode} onChange={event => setCountryCode(event.target.value.toUpperCase())}/></label>
+            <label>Level code<input required value={levelCode} onChange={event => setLevelCode(event.target.value.toUpperCase())}/></label>
+            <label>Parent jurisdiction<select value={parentVersionId} onChange={event => setParentVersionId(event.target.value)}><option value="">Root jurisdiction</option>{jurisdictions.map(item => <option key={item.versionId} value={item.versionId}>{item.code} - {item.name}</option>)}</select></label>
+            <button type="submit">Create jurisdiction draft</button>
+          </form>
+          <form className="form-grid" onSubmit={event => void createLocation(event)}>
+            <h4>Create work-location draft</h4>
+            <label>Work-location code<input required value={locationCode} onChange={event => setLocationCode(event.target.value.toUpperCase())}/></label>
+            <label>Work-location name<input required value={locationName} onChange={event => setLocationName(event.target.value)}/></label>
+            <label>Payroll jurisdiction<select required value={locationJurisdictionVersionId} onChange={event => setLocationJurisdictionVersionId(event.target.value)}><option value="">Select jurisdiction</option>{jurisdictions.map(item => <option key={item.versionId} value={item.versionId}>{item.code} - {item.name}</option>)}</select></label>
+            <label>
+              Establishment (optional)
+              <select
+                value={establishmentVersionId}
+                onChange={event => setEstablishmentVersionId(event.target.value)}
+              >
+                <option value="">No establishment linkage</option>
+                {establishments.map(item => (
+                  <option key={item.versionId} value={item.versionId}>
+                    {item.code} - {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="submit">Create work-location draft</button>
+          </form>
+        </div>
+      )}
+    </section>
+  );
+}
 function TreeNode({
   node,
   onSelect,

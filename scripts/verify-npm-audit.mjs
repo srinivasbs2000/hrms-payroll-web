@@ -3,24 +3,9 @@ import {spawnSync} from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import {fileURLToPath} from 'node:url';
 
-const ALLOWED_ADVISORY = Object.freeze({
-  source: 1124282,
-  packageName: 'react-router',
-  dependency: 'react-router',
-  severity: 'high',
-  url: 'https://github.com/advisories/GHSA-qwww-vcr4-c8h2',
-  range: '>=7.12.0 <8.3.0'
-});
-
-const ALLOWED_HIGH_PACKAGES = new Set([
-  'react-router',
-  'react-router-dom'
-]);
-
-const EXPECTED_ROUTER_VERSION = '7.18.1';
-const EXCEPTION_REVIEW_DEADLINE = '2026-10-31';
+const EXPECTED_ROUTER_VERSION = '7.18.2';
+const MIN_NANOID_VERSION = Object.freeze([3, 3, 17]);
 
 const FORBIDDEN_DEPENDENCIES = new Set([
   '@react-router/dev',
@@ -64,9 +49,8 @@ function parseAuditJson(text) {
     fail('npm audit did not return a JSON object.');
   }
 
-  const candidate = text.slice(first, last + 1);
   try {
-    return JSON.parse(candidate);
+    return JSON.parse(text.slice(first, last + 1));
   } catch (error) {
     fail(`npm audit JSON could not be parsed: ${error.message}`);
   }
@@ -82,183 +66,41 @@ function severityRank(severity) {
   }[severity] ?? -1;
 }
 
-function isHighOrCritical(vulnerability) {
-  return severityRank(vulnerability.severity) >= severityRank('high');
-}
-
-function isAllowedAdvisoryObject(entry) {
-  return (
-    entry &&
-    typeof entry === 'object' &&
-    entry.source === ALLOWED_ADVISORY.source &&
-    entry.name === ALLOWED_ADVISORY.packageName &&
-    entry.dependency === ALLOWED_ADVISORY.dependency &&
-    entry.severity === ALLOWED_ADVISORY.severity &&
-    entry.url === ALLOWED_ADVISORY.url &&
-    entry.range === ALLOWED_ADVISORY.range
-  );
-}
-
-function resolveHighAdvisories(report, packageName, visiting = new Set()) {
-  const vulnerabilities = report.vulnerabilities ?? {};
-  const vulnerability = vulnerabilities[packageName];
-
-  if (!vulnerability) {
-    fail(`Audit entry references missing vulnerability package: ${packageName}`);
-  }
-
-  if (visiting.has(packageName)) {
-    fail(`Circular npm audit vulnerability chain detected at ${packageName}`);
-  }
-
-  const nextVisiting = new Set(visiting);
-  nextVisiting.add(packageName);
-
-  const resolved = [];
-
-  for (const viaEntry of vulnerability.via ?? []) {
-    if (typeof viaEntry === 'string') {
-      resolved.push(
-        ...resolveHighAdvisories(report, viaEntry, nextVisiting)
-      );
-      continue;
-    }
-
-    if (severityRank(viaEntry.severity) >= severityRank('high')) {
-      resolved.push(viaEntry);
-    }
-  }
-
-  return resolved;
-}
-
-function validateAllowedAuditReport(report) {
+function validateCleanAuditReport(report) {
   if (report.auditReportVersion !== 2) {
-    fail(
-      `Unsupported npm audit report version: ${report.auditReportVersion}`
-    );
+    fail(`Unsupported npm audit report version: ${report.auditReportVersion}`);
   }
 
   const vulnerabilities = report.vulnerabilities ?? {};
-  const entries = Object.entries(vulnerabilities);
-  const highEntries = entries.filter(([, vulnerability]) =>
-    isHighOrCritical(vulnerability)
-  );
-
-  if (highEntries.length === 0) {
-    return {
-      status: 'clean',
-      highPackageCount: 0,
-      advisoryCount: 0
-    };
-  }
-
-  const highPackageNames = new Set(highEntries.map(([name]) => name));
-  for (const packageName of highPackageNames) {
-    if (!ALLOWED_HIGH_PACKAGES.has(packageName)) {
-      fail(
-        `Unapproved high/critical npm advisory package: ${packageName}`
-      );
-    }
-  }
-
-  const resolvedByPackage = new Map();
-
-  for (const [packageName] of highEntries) {
-    const resolved = resolveHighAdvisories(report, packageName);
-
-    if (resolved.length === 0) {
-      fail(
-        `High/critical package ${packageName} has no resolvable advisory`
-      );
-    }
-
-    for (const advisory of resolved) {
-      if (!isAllowedAdvisoryObject(advisory)) {
-        fail(
-          `Unapproved advisory for ${packageName}: ` +
-          `${advisory.url ?? advisory.source ?? 'unknown'}`
-        );
-      }
-    }
-
-    resolvedByPackage.set(packageName, resolved);
-  }
-
-  const router = vulnerabilities['react-router'];
-  const routerDom = vulnerabilities['react-router-dom'];
-
-  if (!router || !routerDom) {
-    fail(
-      'The approved advisory must be represented by react-router and ' +
-      'react-router-dom audit entries.'
+  const highEntries = Object.entries(vulnerabilities)
+    .filter(([, vulnerability]) =>
+      severityRank(vulnerability.severity) >= severityRank('high')
     );
-  }
 
-  if (router.isDirect !== false) {
-    fail('react-router must remain a transitive dependency.');
-  }
-
-  if (routerDom.isDirect !== true) {
-    fail('react-router-dom must remain the direct dependency.');
-  }
-
-  if (
-    !Array.isArray(routerDom.via) ||
-    routerDom.via.length !== 1 ||
-    routerDom.via[0] !== 'react-router'
-  ) {
-    fail(
-      'react-router-dom must inherit only the react-router advisory.'
-    );
-  }
-
-  const uniqueSources = new Set();
-  for (const advisories of resolvedByPackage.values()) {
-    for (const advisory of advisories) {
-      uniqueSources.add(advisory.source);
-    }
-  }
-
-  if (
-    uniqueSources.size !== 1 ||
-    !uniqueSources.has(ALLOWED_ADVISORY.source)
-  ) {
-    fail('The audit exception resolved to more than one advisory source.');
+  if (highEntries.length > 0) {
+    const summary = highEntries
+      .map(([name, vulnerability]) => `${name}:${vulnerability.severity}`)
+      .join(', ');
+    fail(`High/critical npm advisories are not permitted: ${summary}`);
   }
 
   const metadata = report.metadata?.vulnerabilities;
-  if (metadata) {
-    const computedHigh = highEntries.filter(
-      ([, vulnerability]) => vulnerability.severity === 'high'
-    ).length;
-    const computedCritical = highEntries.filter(
-      ([, vulnerability]) => vulnerability.severity === 'critical'
-    ).length;
-
-    if (
-      metadata.high !== computedHigh ||
-      metadata.critical !== computedCritical
-    ) {
-      fail(
-        'npm audit metadata does not match the parsed high/critical entries.'
-      );
-    }
+  if (metadata && (metadata.high !== 0 || metadata.critical !== 0)) {
+    fail(
+      'npm audit metadata reports high/critical vulnerabilities despite ' +
+      'an empty parsed high/critical set.'
+    );
   }
 
-  return {
-    status: 'allowed-exception',
-    highPackageCount: highEntries.length,
-    advisoryCount: uniqueSources.size
-  };
+  return {status: 'clean'};
 }
 
 function walkFiles(root) {
-  const output = [];
   if (!fs.existsSync(root)) {
-    return output;
+    return [];
   }
 
+  const output = [];
   for (const entry of fs.readdirSync(root, {withFileTypes: true})) {
     const absolute = path.join(root, entry.name);
     if (entry.isDirectory()) {
@@ -268,6 +110,22 @@ function walkFiles(root) {
     }
   }
   return output;
+}
+
+function parseVersion(value) {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(value ?? '');
+  if (!match) {
+    fail(`Expected a simple semantic version, found ${value}`);
+  }
+  return match.slice(1).map(Number);
+}
+
+function compareVersion(left, right) {
+  for (let index = 0; index < 3; index += 1) {
+    if (left[index] < right[index]) return -1;
+    if (left[index] > right[index]) return 1;
+  }
+  return 0;
 }
 
 function inspectProject(projectRoot) {
@@ -286,38 +144,53 @@ function inspectProject(projectRoot) {
 
   for (const group of dependencyGroups) {
     for (const dependencyName of Object.keys(group)) {
+      if (dependencyName === 'nanoid') {
+        fail('nanoid must remain transitive; do not add it as a direct dependency.');
+      }
       if (
         FORBIDDEN_DEPENDENCIES.has(dependencyName) ||
         dependencyName.startsWith('react-server-dom-')
       ) {
-        fail(
-          `RSC/framework dependency is incompatible with the exception: ` +
-          dependencyName
-        );
+        fail(`RSC/framework dependency is forbidden: ${dependencyName}`);
       }
     }
   }
 
-  const rootDomVersion =
-    packageJson.dependencies?.['react-router-dom'];
-  const lockRootDomVersion =
-    packageLock.packages?.['']?.dependencies?.['react-router-dom'];
-  const lockedDomVersion =
-    packageLock.packages?.['node_modules/react-router-dom']?.version;
-  const lockedRouterVersion =
-    packageLock.packages?.['node_modules/react-router']?.version;
+  const versions = [
+    ['package.json react-router-dom',
+      packageJson.dependencies?.['react-router-dom']],
+    ['package-lock root react-router-dom',
+      packageLock.packages?.['']?.dependencies?.['react-router-dom']],
+    ['locked react-router-dom',
+      packageLock.packages?.['node_modules/react-router-dom']?.version],
+    ['locked react-router',
+      packageLock.packages?.['node_modules/react-router']?.version]
+  ];
 
-  for (const [label, version] of [
-    ['package.json react-router-dom', rootDomVersion],
-    ['package-lock root react-router-dom', lockRootDomVersion],
-    ['locked react-router-dom', lockedDomVersion],
-    ['locked react-router', lockedRouterVersion]
-  ]) {
+  for (const [label, version] of versions) {
     if (version !== EXPECTED_ROUTER_VERSION) {
-      fail(
-        `${label} must be ${EXPECTED_ROUTER_VERSION}; found ${version}`
-      );
+      fail(`${label} must be ${EXPECTED_ROUTER_VERSION}; found ${version}`);
     }
+  }
+
+  const nanoidVersion =
+    packageLock.packages?.['node_modules/nanoid']?.version;
+  const nanoid = parseVersion(nanoidVersion);
+  if (
+    nanoid[0] !== 3 ||
+    compareVersion(nanoid, MIN_NANOID_VERSION) < 0
+  ) {
+    fail(
+      `locked nanoid must be >=3.3.17 and <4.0.0; found ${nanoidVersion}`
+    );
+  }
+
+  const postcssNanoid =
+    packageLock.packages?.['node_modules/postcss']?.dependencies?.nanoid;
+  if (postcssNanoid !== '^3.3.12') {
+    fail(
+      `expected PostCSS nanoid range ^3.3.12; found ${postcssNanoid}`
+    );
   }
 
   const inspectionFiles = [
@@ -327,7 +200,6 @@ function inspectProject(projectRoot) {
   ].filter(filePath => fs.existsSync(filePath));
 
   let browserRouterFound = false;
-
   for (const filePath of inspectionFiles) {
     const text = fs.readFileSync(filePath, 'utf8');
 
@@ -338,7 +210,7 @@ function inspectProject(projectRoot) {
     for (const [label, pattern] of FORBIDDEN_SOURCE_PATTERNS) {
       if (pattern.test(text)) {
         fail(
-          `${label} is incompatible with the approved audit exception: ` +
+          `${label} is forbidden by the frontend security profile: ` +
           path.relative(projectRoot, filePath)
         );
       }
@@ -346,83 +218,28 @@ function inspectProject(projectRoot) {
   }
 
   if (!browserRouterFound) {
-    fail(
-      'BrowserRouter declarative-mode evidence was not found in the frontend.'
-    );
-  }
-
-  const deadline = new Date(`${EXCEPTION_REVIEW_DEADLINE}T00:00:00Z`);
-  const now = new Date();
-
-  if (now >= deadline) {
-    fail(
-      `The React Router audit exception expired on ` +
-      `${EXCEPTION_REVIEW_DEADLINE}. Re-review or remove it.`
-    );
+    fail('BrowserRouter declarative-mode evidence was not found.');
   }
 
   return {
     routerVersion: EXPECTED_ROUTER_VERSION,
-    mode: 'declarative-browser-router',
-    reviewDeadline: EXCEPTION_REVIEW_DEADLINE
+    nanoidVersion,
+    mode: 'declarative-browser-router'
   };
 }
 
-function sampleAllowedReport() {
+function sampleCleanReport() {
   return {
     auditReportVersion: 2,
-    vulnerabilities: {
-      'react-router': {
-        name: 'react-router',
-        severity: 'high',
-        isDirect: false,
-        via: [{
-          source: 1124282,
-          name: 'react-router',
-          dependency: 'react-router',
-          title:
-            'React Router: RSC Mode CSRF Bypass Allows Action ' +
-            'Execution Before 400 Response',
-          url:
-            'https://github.com/advisories/' +
-            'GHSA-qwww-vcr4-c8h2',
-          severity: 'high',
-          cwe: ['CWE-352'],
-          cvss: {score: 0, vectorString: null},
-          range: '>=7.12.0 <8.3.0'
-        }],
-        effects: ['react-router-dom'],
-        range: '7.12.0 - 8.2.0',
-        nodes: ['node_modules/react-router'],
-        fixAvailable: {
-          name: 'react-router-dom',
-          version: '7.11.0',
-          isSemVerMajor: true
-        }
-      },
-      'react-router-dom': {
-        name: 'react-router-dom',
-        severity: 'high',
-        isDirect: true,
-        via: ['react-router'],
-        effects: [],
-        range: '>=7.12.0-pre.0',
-        nodes: ['node_modules/react-router-dom'],
-        fixAvailable: {
-          name: 'react-router-dom',
-          version: '7.11.0',
-          isSemVerMajor: true
-        }
-      }
-    },
+    vulnerabilities: {},
     metadata: {
       vulnerabilities: {
         info: 0,
         low: 0,
         moderate: 0,
-        high: 2,
+        high: 0,
         critical: 0,
-        total: 2
+        total: 0
       }
     }
   };
@@ -437,104 +254,78 @@ function expectFailure(label, callback) {
   fail(`Self-test expected failure but passed: ${label}`);
 }
 
+function buildNpmAuditInvocation(
+  platform = process.platform,
+  environment = process.env
+) {
+  if (platform === 'win32') {
+    return {
+      executable:
+        environment.ComSpec ??
+        environment.COMSPEC ??
+        'cmd.exe',
+      arguments: [
+        '/d',
+        '/s',
+        '/c',
+        'npm.cmd audit --audit-level=high --json'
+      ]
+    };
+  }
+
+  return {
+    executable: 'npm',
+    arguments: ['audit', '--audit-level=high', '--json']
+  };
+}
+
 function runSelfTests() {
-  const windowsInvocation = buildNpmAuditInvocation(
+  const windows = buildNpmAuditInvocation(
     'win32',
     {ComSpec: 'C:\\Windows\\System32\\cmd.exe'}
   );
-
   if (
-    windowsInvocation.executable !==
-      'C:\\Windows\\System32\\cmd.exe' ||
-    windowsInvocation.arguments.join('|') !==
+    windows.executable !== 'C:\\Windows\\System32\\cmd.exe' ||
+    windows.arguments.join('|') !==
       '/d|/s|/c|npm.cmd audit --audit-level=high --json'
   ) {
     fail('Windows npm audit invocation self-test failed.');
   }
 
-  const unixInvocation = buildNpmAuditInvocation('linux', {});
-
+  const unix = buildNpmAuditInvocation('linux', {});
   if (
-    unixInvocation.executable !== 'npm' ||
-    unixInvocation.arguments.join('|') !==
-      'audit|--audit-level=high|--json'
+    unix.executable !== 'npm' ||
+    unix.arguments.join('|') !== 'audit|--audit-level=high|--json'
   ) {
     fail('Unix npm audit invocation self-test failed.');
   }
 
-  const fallbackWindowsInvocation = buildNpmAuditInvocation(
-    'win32',
-    {}
-  );
+  validateCleanAuditReport(sampleCleanReport());
 
-  if (fallbackWindowsInvocation.executable !== 'cmd.exe') {
-    fail('Windows ComSpec fallback self-test failed.');
-  }
-
-  const allowed = sampleAllowedReport();
-  const allowedResult = validateAllowedAuditReport(allowed);
-
-  if (allowedResult.status !== 'allowed-exception') {
-    fail('Allowed report self-test did not use the exception path.');
-  }
-
-  const clean = {
-    auditReportVersion: 2,
-    vulnerabilities: {},
-    metadata: {
-      vulnerabilities: {
-        info: 0,
-        low: 0,
-        moderate: 0,
-        high: 0,
-        critical: 0,
-        total: 0
-      }
-    }
-  };
-
-  if (validateAllowedAuditReport(clean).status !== 'clean') {
-    fail('Clean audit self-test did not pass.');
-  }
-
-  const extraAdvisory = structuredClone(allowed);
-  extraAdvisory.vulnerabilities['react-router'].via.push({
-    source: 9999999,
-    name: 'react-router',
-    dependency: 'react-router',
-    url: 'https://github.com/advisories/GHSA-xxxx-yyyy-zzzz',
+  const high = sampleCleanReport();
+  high.vulnerabilities.nanoid = {
+    name: 'nanoid',
     severity: 'high',
-    range: '*'
-  });
+    via: [],
+    effects: [],
+    range: '<3.3.17',
+    nodes: ['node_modules/nanoid']
+  };
+  high.metadata.vulnerabilities.high = 1;
+  high.metadata.vulnerabilities.total = 1;
   expectFailure(
-    'additional high advisory',
-    () => validateAllowedAuditReport(extraAdvisory)
+    'high advisory must be rejected',
+    () => validateCleanAuditReport(high)
   );
 
-  const wrongUrl = structuredClone(allowed);
-  wrongUrl.vulnerabilities['react-router'].via[0].url =
-    'https://github.com/advisories/GHSA-wrong';
-  expectFailure(
-    'allowed source with wrong URL',
-    () => validateAllowedAuditReport(wrongUrl)
-  );
+  if (compareVersion([3, 3, 17], [3, 3, 17]) !== 0) {
+    fail('version equality self-test failed.');
+  }
+  if (compareVersion([3, 3, 18], [3, 3, 17]) <= 0) {
+    fail('version greater-than self-test failed.');
+  }
 
-  const unknownWrapper = structuredClone(allowed);
-  unknownWrapper.vulnerabilities['react-router-dom'].via =
-    ['missing-package'];
-  expectFailure(
-    'wrapper references unknown package',
-    () => validateAllowedAuditReport(unknownWrapper)
-  );
-
-  const directRouter = structuredClone(allowed);
-  directRouter.vulnerabilities['react-router'].isDirect = true;
-  expectFailure(
-    'react-router becomes direct',
-    () => validateAllowedAuditReport(directRouter)
-  );
-
-  console.log('npm audit policy self-tests: PASS');
+  console.log('npm audit clean-policy self-tests: PASS');
 }
 
 function parseArguments(argv) {
@@ -570,37 +361,6 @@ function parseArguments(argv) {
   return result;
 }
 
-function buildNpmAuditInvocation(
-  platform = process.platform,
-  environment = process.env
-) {
-  const auditArguments = [
-    'audit',
-    '--audit-level=high',
-    '--json'
-  ];
-
-  if (platform === 'win32') {
-    return {
-      executable:
-        environment.ComSpec ??
-        environment.COMSPEC ??
-        'cmd.exe',
-      arguments: [
-        '/d',
-        '/s',
-        '/c',
-        'npm.cmd audit --audit-level=high --json'
-      ]
-    };
-  }
-
-  return {
-    executable: 'npm',
-    arguments: auditArguments
-  };
-}
-
 function runNpmAudit(projectRoot) {
   const invocation = buildNpmAuditInvocation();
 
@@ -617,8 +377,8 @@ function runNpmAudit(projectRoot) {
 
   if (result.error) {
     fail(
-      `Unable to execute npm audit through ` +
-      `${invocation.executable}: ${result.error.message}`
+      `Unable to execute npm audit through ${invocation.executable}: ` +
+      result.error.message
     );
   }
 
@@ -627,14 +387,13 @@ function runNpmAudit(projectRoot) {
   }
 
   if (![0, 1].includes(result.status)) {
-    fail(
-      `npm audit failed unexpectedly with exit code ` +
-      `${result.status}`
-    );
+    fail(`npm audit failed unexpectedly with exit code ${result.status}`);
   }
 
-  const report = parseAuditJson(result.stdout ?? '');
-  return {report, exitCode: result.status};
+  return {
+    report: parseAuditJson(result.stdout ?? ''),
+    exitCode: result.status
+  };
 }
 
 function main() {
@@ -646,46 +405,28 @@ function main() {
     return;
   }
 
-  const project = inspectProject(
-    path.resolve(options.projectRoot)
-  );
+  const projectRoot = path.resolve(options.projectRoot);
+  const project = inspectProject(projectRoot);
 
   const audit = options.input
     ? {
         report: readJson(path.resolve(options.input)),
-        exitCode: 1
+        exitCode: 0
       }
-    : runNpmAudit(path.resolve(options.projectRoot));
+    : runNpmAudit(projectRoot);
 
-  const evaluation = validateAllowedAuditReport(audit.report);
+  validateCleanAuditReport(audit.report);
 
-  if (evaluation.status === 'clean') {
-    if (audit.exitCode !== 0) {
-      fail(
-        'npm audit returned a failure exit code without high/critical ' +
-        'vulnerabilities.'
-      );
-    }
-
-    console.log('npm audit policy: PASS — no high/critical advisories.');
-    return;
-  }
-
-  if (audit.exitCode !== 1) {
+  if (audit.exitCode !== 0) {
     fail(
-      'The approved advisory exception requires npm audit exit code 1.'
+      'npm audit returned a failure exit code despite the clean-policy result.'
     );
   }
 
+  console.log('npm audit policy: PASS — no high/critical advisories.');
   console.log(
-    'npm audit policy: PASS — approved exception ' +
-    `${ALLOWED_ADVISORY.url}`
-  );
-  console.log(
-    `Frontend mode: ${project.mode}; router ${project.routerVersion}`
-  );
-  console.log(
-    `Exception review deadline: ${project.reviewDeadline}`
+    `Frontend mode: ${project.mode}; router ${project.routerVersion}; ` +
+    `nanoid ${project.nanoidVersion}`
   );
 }
 
