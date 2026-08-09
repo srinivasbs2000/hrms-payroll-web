@@ -167,19 +167,9 @@ jobs:
         shell: pwsh
         run: |
           $uiResults = Join-Path $env:GITHUB_WORKSPACE 'test-results'
-          $backendMirror = Join-Path `
-            $env:PAYROLL_BACKEND_REPOSITORY_PATH `
-            'frontend/payroll-web/test-results'
-          if (Test-Path -LiteralPath $backendMirror) {
-            Remove-Item -LiteralPath $backendMirror -Recurse -Force
-          }
-          New-Item -ItemType Directory -Path $backendMirror -Force | Out-Null
-          if (Test-Path -LiteralPath $uiResults -PathType Container) {
-            Get-ChildItem -LiteralPath $uiResults -Force |
-              Copy-Item -Destination $backendMirror -Recurse -Force
-          }
           & "$env:PAYROLL_BACKEND_REPOSITORY_PATH/scripts/e2e/prepare-ci-artifacts.ps1" `
-            -RepositoryPath "$env:PAYROLL_BACKEND_REPOSITORY_PATH"
+            -RepositoryPath "$env:PAYROLL_BACKEND_REPOSITORY_PATH" `
+            -FrontendResultsPath "$uiResults"
 
       - name: Upload sanitized browser failure evidence
         if: failure()

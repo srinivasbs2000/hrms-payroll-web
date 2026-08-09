@@ -18,11 +18,10 @@ npm run build
 The browser E2E suite starts the Payroll backend through
 `e2e/start-backend.mjs`.
 
-While the UI remains inside the monorepo, the backend repository is discovered
-from the existing `frontend/payroll-web` location, so current commands keep the
-same behavior.
+The UI is maintained in this standalone repository. Browser E2E resolves the
+authoritative backend through `PAYROLL_BACKEND_REPOSITORY_PATH`.
 
-For an independently checked-out UI, set:
+For local browser E2E, set:
 
 ```text
 PAYROLL_BACKEND_REPOSITORY_PATH=C:\dev\hrms-payroll
@@ -40,7 +39,7 @@ This setting changes repository location only. It does not change API paths,
 Keycloak client identity, tenant claims, permissions, browser token handling or
 Payroll business behavior.
 
-## Repository ownership during HK-UI-SPLIT-01
+## Repository ownership after HK-UI-SPLIT-01
 
 This repository is the independently published Payroll React UI repository.
 From HK-UI-SPLIT-01C, frontend test/build, npm dependency automation, frontend
@@ -51,6 +50,7 @@ program governance, API/OpenAPI contracts, database migrations, backend code,
 Keycloak deployment, deterministic E2E fixtures and backend service evidence.
 
 Cross-repository browser E2E checks out the backend authority separately and
-passes its checkout through `PAYROLL_BACKEND_REPOSITORY_PATH`. The source UI
-copy under `hrms-payroll/frontend/payroll-web` remains temporarily during 01C;
-its deletion and backend CI cleanup are deferred to HK-UI-SPLIT-01D.
+passes its checkout through `PAYROLL_BACKEND_REPOSITORY_PATH`. HK-UI-SPLIT-01D
+removed the former embedded UI source copy and duplicate backend-owned frontend
+CI. The history-preserving extraction provenance remains in
+`EXTRACTION_PROVENANCE.md`.
