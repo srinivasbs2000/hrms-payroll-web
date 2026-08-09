@@ -1,0 +1,34 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "02:30"
+      timezone: Asia/Kolkata
+    open-pull-requests-limit: 5
+    groups:
+      react-and-testing:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "react-router-dom"
+          - "@testing-library/*"
+          - "vitest"
+          - "vite"
+      typescript-tooling:
+        dependency-type: development
+        patterns:
+          - "typescript"
+          - "@types/*"
+          - "@vitejs/*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+      timezone: Asia/Kolkata
+    open-pull-requests-limit: 5

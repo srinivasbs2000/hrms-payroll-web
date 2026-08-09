@@ -39,3 +39,18 @@ npm run e2e:backend-check
 This setting changes repository location only. It does not change API paths,
 Keycloak client identity, tenant claims, permissions, browser token handling or
 Payroll business behavior.
+
+## Repository ownership during HK-UI-SPLIT-01
+
+This repository is the independently published Payroll React UI repository.
+From HK-UI-SPLIT-01C, frontend test/build, npm dependency automation, frontend
+SBOM generation and UI-initiated browser E2E are owned here.
+
+The `srinivasbs2000/hrms-payroll` repository remains authoritative for Payroll
+program governance, API/OpenAPI contracts, database migrations, backend code,
+Keycloak deployment, deterministic E2E fixtures and backend service evidence.
+
+Cross-repository browser E2E checks out the backend authority separately and
+passes its checkout through `PAYROLL_BACKEND_REPOSITORY_PATH`. The source UI
+copy under `hrms-payroll/frontend/payroll-web` remains temporarily during 01C;
+its deletion and backend CI cleanup are deferred to HK-UI-SPLIT-01D.
