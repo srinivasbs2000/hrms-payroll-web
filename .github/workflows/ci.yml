@@ -1,0 +1,198 @@
+name: payroll-web-ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend-test-build:
+    name: Frontend test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.14.0
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: Enforce scoped npm audit policy
+        run: node scripts/verify-npm-audit.mjs
+      - name: Upload React build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: react-build-${{ github.run_attempt }}
+          if-no-files-found: warn
+          path: dist/
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: high
+          fail-on-scopes: runtime, development
+          show-patched-versions: true
+          retry-on-snapshot-warnings: true
+          retry-on-snapshot-warnings-timeout: 120
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  frontend-sbom:
+    name: Frontend SBOM
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.14.0
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npx --yes @cyclonedx/cyclonedx-npm --output-file bom-frontend.json
+      - name: Upload frontend SBOM
+        uses: actions/upload-artifact@v6
+        with:
+          name: payroll-web-sbom-${{ github.run_attempt }}
+          if-no-files-found: error
+          path: bom-frontend.json
+
+  cross-repo-browser-e2e:
+    name: Cross-repository browser E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CI: 'true'
+      PAYROLL_BACKEND_REPOSITORY_PATH: ${{ github.workspace }}/.ci/hrms-payroll
+    steps:
+      - name: Checkout Payroll web
+        uses: actions/checkout@v6
+
+      - name: Checkout Payroll backend authority
+        uses: actions/checkout@v6
+        with:
+          repository: srinivasbs2000/hrms-payroll
+          ref: main
+          path: .ci/hrms-payroll
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.14.0
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Record backend integration SHA
+        shell: bash
+        run: |
+          backend_sha="$(git -C "$PAYROLL_BACKEND_REPOSITORY_PATH" rev-parse HEAD)"
+          printf 'PAYROLL_BACKEND_SHA=%s\n' "$backend_sha" >> "$GITHUB_ENV"
+          printf 'Backend integration SHA: %s\n' "$backend_sha"
+
+      - name: Prepare synthetic E2E environment
+        shell: bash
+        run: |
+          cp             "$PAYROLL_BACKEND_REPOSITORY_PATH/deploy/local/.env.example"             "$PAYROLL_BACKEND_REPOSITORY_PATH/deploy/local/.env"
+          synthetic_password="$(
+            sed -n               's/^KEYCLOAK_SMOKE_PASSWORD=//p'               "$PAYROLL_BACKEND_REPOSITORY_PATH/deploy/local/.env"
+          )"
+          if [ -z "$synthetic_password" ]; then
+            echo               'KEYCLOAK_SMOKE_PASSWORD is missing from the synthetic environment.'               >&2
+            exit 1
+          fi
+          echo "::add-mask::$synthetic_password"
+          printf 'E2E_PAYROLL_ADMIN_PASSWORD=%s\n' "$synthetic_password"             >> "$GITHUB_ENV"
+          printf 'E2E_PAYROLL_SMOKE_PASSWORD=%s\n' "$synthetic_password"             >> "$GITHUB_ENV"
+
+      - name: Install backend modules
+        working-directory: .ci/hrms-payroll
+        run: ./mvnw --batch-mode -DskipTests install
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install Chromium and Linux dependencies
+        run: npx playwright install --with-deps chromium
+
+      - name: Reset and verify isolated payroll fixture
+        shell: pwsh
+        run: |
+          & "$env:PAYROLL_BACKEND_REPOSITORY_PATH/scripts/e2e/reset-payroll-smoke.ps1" `
+            -RepositoryPath "$env:PAYROLL_BACKEND_REPOSITORY_PATH"
+
+      - name: Validate explicit backend repository boundary
+        run: npm run e2e:backend-check
+
+      - name: Run payroll browser E2E
+        run: npm run e2e
+
+      - name: Prepare sanitized browser failure evidence
+        if: failure()
+        shell: pwsh
+        run: |
+          $uiResults = Join-Path $env:GITHUB_WORKSPACE 'test-results'
+          $backendMirror = Join-Path `
+            $env:PAYROLL_BACKEND_REPOSITORY_PATH `
+            'frontend/payroll-web/test-results'
+          if (Test-Path -LiteralPath $backendMirror) {
+            Remove-Item -LiteralPath $backendMirror -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $backendMirror -Force | Out-Null
+          if (Test-Path -LiteralPath $uiResults -PathType Container) {
+            Get-ChildItem -LiteralPath $uiResults -Force |
+              Copy-Item -Destination $backendMirror -Recurse -Force
+          }
+          & "$env:PAYROLL_BACKEND_REPOSITORY_PATH/scripts/e2e/prepare-ci-artifacts.ps1" `
+            -RepositoryPath "$env:PAYROLL_BACKEND_REPOSITORY_PATH"
+
+      - name: Upload sanitized browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: payroll-web-browser-e2e-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: .ci/hrms-payroll/target/e2e-ci-artifacts/
+
+      - name: Stop isolated payroll E2E services
+        if: always()
+        shell: pwsh
+        run: |
+          & "$env:PAYROLL_BACKEND_REPOSITORY_PATH/scripts/e2e/stop-payroll-smoke.ps1" `
+            -RepositoryPath "$env:PAYROLL_BACKEND_REPOSITORY_PATH"
