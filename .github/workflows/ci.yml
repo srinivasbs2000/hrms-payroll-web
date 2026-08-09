@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: 24.14.0
@@ -44,7 +44,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
@@ -61,7 +61,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
@@ -73,7 +73,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: 24.14.0
@@ -97,10 +97,10 @@ jobs:
       PAYROLL_BACKEND_REPOSITORY_PATH: ${{ github.workspace }}/.ci/hrms-payroll
     steps:
       - name: Checkout Payroll web
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Checkout Payroll backend authority
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: srinivasbs2000/hrms-payroll
           ref: main
