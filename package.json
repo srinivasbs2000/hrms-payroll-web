@@ -13,6 +13,7 @@
     "test": "vitest run",
     "lint": "oxlint -D correctness --react-plugin --vitest-plugin -A vitest/require-mock-type-parameters src",
     "e2e": "playwright test",
+    "e2e:backend-check": "node e2e/start-backend.mjs --validate-only",
     "e2e:headed": "playwright test --headed",
     "e2e:ui": "playwright test --ui",
     "e2e:report": "playwright show-report"
