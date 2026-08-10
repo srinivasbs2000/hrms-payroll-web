@@ -81,6 +81,15 @@ export default defineConfig({
       use:{
         ...devices['Desktop Chrome']
       }
+    },
+    {
+      name:'foundation-snapshot-readiness',
+      testMatch:'foundation-snapshot-readiness.spec.ts',
+      dependencies:['foundation-banking-authority'],
+      use:{
+        ...devices['Desktop Chrome'],
+        storageState:path.join(authDirectory,'admin.json')
+      }
     }
   ]
 });
