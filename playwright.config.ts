@@ -53,6 +53,10 @@ export default defineConfig({
       testMatch:'smoke.setup.ts'
     },
     {
+      name:'setup-fba-actors',
+      testMatch:'fba-actors.setup.ts'
+    },
+    {
       name:'admin-workflow',
       testMatch:'admin-payroll.spec.ts',
       dependencies:['setup-admin'],
@@ -68,6 +72,14 @@ export default defineConfig({
       use:{
         ...devices['Desktop Chrome'],
         storageState:path.join(authDirectory,'smoke.json')
+      }
+    },
+    {
+      name:'foundation-banking-authority',
+      testMatch:'foundation-banking-authority.spec.ts',
+      dependencies:['setup-admin','setup-smoke','setup-fba-actors','admin-workflow'],
+      use:{
+        ...devices['Desktop Chrome']
       }
     }
   ]
