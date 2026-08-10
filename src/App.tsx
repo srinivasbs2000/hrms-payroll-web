@@ -3,6 +3,7 @@ import {useAuth} from './auth/AuthProvider';
 import {DraftPayslipPage} from './features/draft-payslip/DraftPayslipPage';
 import {EmployeePayrollPage} from './features/employee-payroll/EmployeePayrollPage';
 import {FoundationBankingAuthorityPage} from './features/foundation-banking-authority/FoundationBankingAuthorityPage';
+import {FoundationReadinessPage} from './features/foundation-readiness/FoundationReadinessPage';
 import {SetupPage} from './features/organisation/SetupPage';
 import {PayGroupPage} from './features/pay-group/PayGroupPage';
 import {PayComponentPage} from './features/pay-component/PayComponentPage';
@@ -16,6 +17,7 @@ import {StatutoryRegistrationPage} from './features/statutory-registration/Statu
 const navigation=[
   {to:'/organisation',label:'Organisation',permission:'organisation.read'},
   {to:'/foundation-banking-authority',label:'Banking & authority',permission:'organisation.bank-account.read'},
+  {to:'/foundation-readiness',label:'Foundation readiness',permission:'payroll-cycle.read'},
   {to:'/payroll-calendars',label:'Payroll calendars',permission:'calendar.read'},
   {to:'/pay-groups',label:'Pay groups',permission:'pay-group.read'},
   {to:'/pay-components',label:'Pay components',permission:'compensation.component.read'},
@@ -48,6 +50,7 @@ export function App(){
       <Route path="/no-access" element={<NoAccessPage/>}/>
       <Route path="/organisation" element={<SetupPage/>}/>
       <Route path="/foundation-banking-authority" element={<FoundationBankingAuthorityPage/>}/>
+      <Route path="/foundation-readiness" element={<FoundationReadinessPage/>}/>
       <Route path="/payroll-calendars" element={<PayrollCalendarPage/>}/>
       <Route path="/pay-groups" element={<PayGroupPage/>}/>
       <Route path="/pay-components" element={<PayComponentPage/>}/>
