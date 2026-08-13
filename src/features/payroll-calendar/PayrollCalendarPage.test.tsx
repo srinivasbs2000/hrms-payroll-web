@@ -1,176 +1,76 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor
-} from '@testing-library/react';
+import {fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {expect,test,vi} from 'vitest';
 import {PayrollCalendarPage} from './PayrollCalendarPage';
-import {
-  PayPeriod,
-  PayrollCalendar,
-  PayrollCalendarApi
-} from './payroll-calendar-api';
+import {CalendarOperational,PayPeriodOperational,PayrollCalendar,PayrollCalendarApi} from './payroll-calendar-api';
 
 const calendar:PayrollCalendar={
-  id:'20000000-0000-0000-0000-000000000001',
-  code:'MONTHLY_IN',
-  name:'Monthly India',
-  frequency:'MONTHLY',
-  timezone:'Asia/Kolkata'
+  id:'20000000-0000-0000-0000-000000000001',calendarSeriesId:'21000000-0000-0000-0000-000000000001',
+  calendarVersion:1,supersedesCalendarId:null,code:'WEEKLY_IN',name:'Weekly India',frequency:'WEEKLY',timezone:'Asia/Kolkata'
 };
-
-const periods:PayPeriod[]=Array.from({length:12},(_,index)=>{
-  const month=String(index+1).padStart(2,'0');
-  const february=index===1;
+const operation:CalendarOperational={...calendar,customPeriodDays:null,customFrequencyAuthorised:false,
+  publicationRequired:true,lifecycleStatus:'DRAFT',latestLifecycleEventId:null,lifecycleChangedAt:null,
+  lifecycleChangedBy:null,lifecycleReason:null,milestoneRuleCount:5,holidayCount:3,periodCount:52,
+  firstPeriodStart:'2026-01-01',lastPeriodEnd:'2026-12-31'};
+const evidence:PayPeriodOperational[]=[{
+  id:'30000000-0000-0000-0000-000000000001',calendarId:calendar.id,periodCode:'2026-W01',
+  periodStart:'2026-01-01',periodEnd:'2026-01-07',paymentDate:'2026-01-07',status:'OPEN',
+  paymentOriginalDate:'2026-01-07',paymentAdjustedDate:'2026-01-06'
+}];
+function fakeApi(overrides:Partial<PayrollCalendarApi>={}):PayrollCalendarApi{
   return {
-    id:`30000000-0000-0000-0000-${String(index+1).padStart(12,'0')}`,
-    calendarId:calendar.id,
-    periodCode:`2028-${month}`,
-    periodStart:`2028-${month}-01`,
-    periodEnd: february
-      ?'2028-02-29'
-      :`2028-${month}-${index===3||index===5||index===8||index===10?'30':'31'}`,
-    paymentDate:february
-      ?'2028-02-29'
-      :`2028-${month}-${index===3||index===5||index===8||index===10?'30':'31'}`,
-    status:'OPEN'
-  };
-});
-
-function fakeApi(
-  overrides:Partial<PayrollCalendarApi>={}
-):PayrollCalendarApi{
-  return {
-    list:vi.fn().mockResolvedValue([]),
-    create:vi.fn().mockResolvedValue(calendar),
-    periods:vi.fn().mockResolvedValue([]),
-    generate:vi.fn().mockResolvedValue(periods),
-    ...overrides
+    list:vi.fn().mockResolvedValue([calendar]),create:vi.fn().mockResolvedValue(calendar),
+    periods:vi.fn().mockResolvedValue(evidence),generate:vi.fn().mockResolvedValue(evidence),
+    operations:vi.fn().mockResolvedValue(operation),periodOperations:vi.fn().mockResolvedValue(evidence),
+    publish:vi.fn().mockResolvedValue({...operation,lifecycleStatus:'PUBLISHED'}),
+    amend:vi.fn().mockResolvedValue({...calendar,id:'next',calendarVersion:2,supersedesCalendarId:calendar.id}),
+    retire:vi.fn().mockResolvedValue({...operation,lifecycleStatus:'RETIRED'}),...overrides
   };
 }
-
-test('rejects the screen when calendar.read is absent',()=>{
-  const api=fakeApi();
-  render(
-    <PayrollCalendarPage
-      api={api}
-      permissions={new Set()}
-    />);
-  expect(screen.getByRole('alert')).toHaveTextContent(
-    'do not have permission');
-  expect(api.list).not.toHaveBeenCalled();
+test('requires calendar.read',()=>{
+  const api=fakeApi();render(<PayrollCalendarPage api={api} permissions={new Set()}/>);
+  expect(screen.getByRole('alert')).toHaveTextContent('do not have permission');expect(api.list).not.toHaveBeenCalled();
+});
+test('shows multi-frequency lifecycle readiness and adjusted milestone evidence',async()=>{
+  const api=fakeApi();render(<PayrollCalendarPage api={api} permissions={new Set(['calendar.read'])}/>);
+  fireEvent.click(await screen.findByRole('button',{name:/WEEKLY_IN/}));
+  expect(await screen.findByText('Milestone rules: 5/5')).toBeInTheDocument();
+  expect(screen.getByText(/Calendar lifecycle is DRAFT/)).toBeInTheDocument();
+  expect(screen.getByText('2026-01-07 → 2026-01-06')).toBeInTheDocument();
+});
+test('creates a custom calendar only with explicit custom configuration fields',async()=>{
+  const api=fakeApi({list:vi.fn().mockResolvedValue([])});
+  render(<PayrollCalendarPage api={api} permissions={new Set(['calendar.read','calendar.create'])}/>);
+  await screen.findByText('No payroll calendars are configured.');
+  fireEvent.change(screen.getByLabelText('Calendar code'),{target:{value:'custom_in'}});
+  fireEvent.change(screen.getByLabelText('Calendar name'),{target:{value:'Custom India'}});
+  fireEvent.change(screen.getByLabelText('Frequency'),{target:{value:'CUSTOM'}});
+  fireEvent.change(screen.getByLabelText('Custom period days'),{target:{value:'14'}});
+  fireEvent.click(screen.getByLabelText('Custom frequency explicitly authorised'));
+  fireEvent.click(screen.getByRole('button',{name:'Create calendar'}));
+  await waitFor(()=>expect(api.create).toHaveBeenCalledWith(expect.objectContaining({
+    code:'CUSTOM_IN',frequency:'CUSTOM',customPeriodDays:14,customFrequencyAuthorised:true,weekendIsoDays:[6,7]
+  })));
 });
 
-test('lists calendars and loads their periods',async()=>{
-  const api=fakeApi({
-    list:vi.fn().mockResolvedValue([calendar]),
-    periods:vi.fn().mockResolvedValue(periods)
-  });
-
-  render(
-    <PayrollCalendarPage
-      api={api}
-      permissions={new Set(['calendar.read'])}
-    />);
-
-  fireEvent.click(
-    await screen.findByRole(
-      'button',
-      {name:/MONTHLY_IN/}));
-
-  expect(await screen.findByText('2028-02')).toBeInTheDocument();
-  expect(screen.getAllByText('2028-02-29')).toHaveLength(2);
-  expect(api.periods).toHaveBeenCalledWith(
-    calendar.id,
-    expect.any(Number));
+test('blocks publication while authoritative readiness blockers remain',async()=>{
+  const blocked={...operation,milestoneRuleCount:0,periodCount:0};
+  const api=fakeApi({operations:vi.fn().mockResolvedValue(blocked),periods:vi.fn().mockResolvedValue([]),periodOperations:vi.fn().mockResolvedValue([])});
+  render(<PayrollCalendarPage api={api} permissions={new Set(['calendar.read','calendar.create'])}/>);
+  fireEvent.click(await screen.findByRole('button',{name:/WEEKLY_IN/}));
+  expect(await screen.findByText('Milestone rules: 0/5')).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:'Publish calendar'})).toBeDisabled();
+  expect(api.publish).not.toHaveBeenCalled();
 });
-
-test('creates the supported monthly calendar shape',async()=>{
-  const api=fakeApi();
-
-  render(
-    <PayrollCalendarPage
-      api={api}
-      permissions={new Set([
-        'calendar.read',
-        'calendar.create'
-      ])}
-    />);
-
-  await screen.findByText('No payroll calendars');
-
-  fireEvent.change(
-    screen.getByLabelText('Calendar code'),
-    {target:{value:'monthly_in'}});
-  fireEvent.change(
-    screen.getByLabelText('Calendar name'),
-    {target:{value:'Monthly India'}});
-  fireEvent.click(
-    screen.getByRole(
-      'button',
-      {name:'Create calendar'}));
-
-  await waitFor(()=>expect(api.create).toHaveBeenCalledWith({
-    code:'MONTHLY_IN',
-    name:'Monthly India',
-    frequency:'MONTHLY',
-    timezone:'Asia/Kolkata'
-  }));
-});
-
-test('generates and displays twelve leap-year periods',async()=>{
-  const api=fakeApi({
-    list:vi.fn().mockResolvedValue([calendar])
-  });
-
-  render(
-    <PayrollCalendarPage
-      api={api}
-      permissions={new Set([
-        'calendar.read',
-        'calendar.period.generate'
-      ])}
-    />);
-
-  fireEvent.click(
-    await screen.findByRole(
-      'button',
-      {name:/MONTHLY_IN/}));
-
-  fireEvent.change(
-    screen.getByLabelText('Period year'),
-    {target:{value:'2028'}});
-  fireEvent.change(
-    screen.getByLabelText('Payment day'),
-    {target:{value:'31'}});
-  fireEvent.click(
-    screen.getByRole(
-      'button',
-      {name:'Generate 12 periods'}));
-
-  await waitFor(()=>expect(api.generate).toHaveBeenCalledWith(
-    calendar.id,
-    {year:2028,paymentDay:31}
-  ));
-  expect(await screen.findByText('2028-02')).toBeInTheDocument();
-  expect(screen.getAllByText('2028-02-29')).toHaveLength(2);
-  expect(screen.getByRole('status')).toHaveTextContent(
-    '12 monthly periods');
-});
-
-test('surfaces calendar API errors accessibly',async()=>{
-  const api=fakeApi({
-    list:vi.fn().mockRejectedValue(
-      new Error('Tenant context unavailable'))
-  });
-
-  render(
-    <PayrollCalendarPage
-      api={api}
-      permissions={new Set(['calendar.read'])}
-    />);
-
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    'Tenant context unavailable');
+test('generates non-monthly periods from explicit start and count and publishes draft',async()=>{
+  const api=fakeApi();render(<PayrollCalendarPage api={api} permissions={new Set([
+    'calendar.read','calendar.create','calendar.period.generate'
+  ])}/>);
+  fireEvent.click(await screen.findByRole('button',{name:/WEEKLY_IN/}));
+  await screen.findByText('Milestone rules: 5/5');
+  fireEvent.change(screen.getByLabelText('Schedule start'),{target:{value:'2026-01-01'}});
+  fireEvent.change(screen.getByLabelText('Period count'),{target:{value:'52'}});
+  fireEvent.click(screen.getByRole('button',{name:'Generate periods'}));
+  await waitFor(()=>expect(api.generate).toHaveBeenCalledWith(calendar.id,{startDate:'2026-01-01',periodCount:52}));
+  fireEvent.click(screen.getByRole('button',{name:'Publish calendar'}));
+  await waitFor(()=>expect(api.publish).toHaveBeenCalledWith(calendar.id,''));
 });

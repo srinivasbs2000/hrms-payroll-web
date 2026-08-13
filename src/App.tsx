@@ -2,6 +2,7 @@ import {Navigate,NavLink,Route,Routes} from 'react-router-dom';
 import {useAuth} from './auth/AuthProvider';
 import {DraftPayslipPage} from './features/draft-payslip/DraftPayslipPage';
 import {EmployeePayrollPage} from './features/employee-payroll/EmployeePayrollPage';
+import {FoundationApprovalAuthorityPage} from './features/foundation-approval-authority/FoundationApprovalAuthorityPage';
 import {FoundationBankingAuthorityPage} from './features/foundation-banking-authority/FoundationBankingAuthorityPage';
 import {FoundationReadinessPage} from './features/foundation-readiness/FoundationReadinessPage';
 import {SetupPage} from './features/organisation/SetupPage';
@@ -16,6 +17,7 @@ import {StatutoryRegistrationPage} from './features/statutory-registration/Statu
 
 const navigation=[
   {to:'/organisation',label:'Organisation',permission:'organisation.read'},
+  {to:'/foundation-approval-authority',label:'Approval authority',permission:'foundation-approval-authority.read'},
   {to:'/foundation-banking-authority',label:'Banking & authority',permission:'organisation.bank-account.read'},
   {to:'/foundation-readiness',label:'Foundation readiness',permission:'payroll-cycle.read'},
   {to:'/payroll-calendars',label:'Payroll calendars',permission:'calendar.read'},
@@ -49,6 +51,7 @@ export function App(){
       <Route path="*" element={<Navigate to={firstRoute} replace/>}/>
       <Route path="/no-access" element={<NoAccessPage/>}/>
       <Route path="/organisation" element={<SetupPage/>}/>
+      <Route path="/foundation-approval-authority" element={<FoundationApprovalAuthorityPage/>}/>
       <Route path="/foundation-banking-authority" element={<FoundationBankingAuthorityPage/>}/>
       <Route path="/foundation-readiness" element={<FoundationReadinessPage/>}/>
       <Route path="/payroll-calendars" element={<PayrollCalendarPage/>}/>
