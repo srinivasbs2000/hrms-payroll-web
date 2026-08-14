@@ -1,12 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {expect,test as setup} from '@playwright/test';
-import {login} from './support/auth';
+import {e2ePassword,login} from './support/auth';
 
 const authDirectory=path.join(import.meta.dirname,'.auth');
 const verifierState=path.join(authDirectory,'fba-verifier.json');
 const approverState=path.join(authDirectory,'fba-approver.json');
 const tenantId='00000000-0000-0000-0000-000000000001';
+const legalEntityId='41000000-0000-0000-0000-000000000001';
 const actorPassword=process.env.E2E_FBA_ACTOR_PASSWORD||'change-me';
 
 type ActorDefinition={
@@ -15,6 +16,21 @@ type ActorDefinition={
   realmRoles:string[];
   permissions:string[];
   state:string;
+};
+
+type TokenClaims={
+  iss?:string;
+  sub?:string;
+  preferred_username?:string;
+  tenant_id?:string;
+  permissions?:string|string[];
+};
+
+type AuthoritySeed={
+  actorId:string;
+  approvalRole:'VERIFIER'|'FINAL_APPROVER';
+  domainCode:'EMPLOYER_BANK_ACCOUNT'|'AUTHORISED_SIGNATORY';
+  actionCode:'VERIFY'|'REQUEST_APPROVAL'|'APPROVE';
 };
 
 const actors:ActorDefinition[]=[
@@ -69,15 +85,20 @@ function backendEnvironment(){
   return values;
 }
 
-async function masterToken(values:Record<string,string>){
+async function tokenRequest(
+  realm:string,
+  clientId:string,
+  username:string,
+  password:string
+){
   const body=new URLSearchParams({
-    client_id:'admin-cli',
+    client_id:clientId,
     grant_type:'password',
-    username:values.KEYCLOAK_ADMIN||'admin',
-    password:values.KEYCLOAK_ADMIN_PASSWORD||'admin'
+    username,
+    password
   });
   const response=await fetch(
-    'http://localhost:8081/realms/master/protocol/openid-connect/token',
+    `http://localhost:8081/realms/${realm}/protocol/openid-connect/token`,
     {
       method:'POST',
       headers:{'content-type':'application/x-www-form-urlencoded'},
@@ -85,11 +106,20 @@ async function masterToken(values:Record<string,string>){
     }
   );
   if(!response.ok)throw new Error(
-    `Keycloak admin token failed: HTTP ${response.status}`
+    `Token request failed for ${username} in ${realm}: HTTP ${response.status} ${await response.text()}`
   );
   const token=await response.json() as {access_token?:string};
-  if(!token.access_token)throw new Error('Keycloak admin token is missing.');
+  if(!token.access_token)throw new Error(`Access token is missing for ${username}.`);
   return token.access_token;
+}
+
+async function masterToken(values:Record<string,string>){
+  return tokenRequest(
+    'master',
+    'admin-cli',
+    values.KEYCLOAK_ADMIN||'admin',
+    values.KEYCLOAK_ADMIN_PASSWORD||'admin'
+  );
 }
 
 function userRepresentation(actor:ActorDefinition){
@@ -134,44 +164,22 @@ async function importActors(accessToken:string){
   );
 }
 
-function decodeClaims(accessToken:string){
+function decodeClaims(accessToken:string):TokenClaims{
   const parts=accessToken.split('.');
-  if(parts.length!==3)throw new Error(
-    'Synthetic actor access token is not a JWT.'
+  if(parts.length!==3)throw new Error('Synthetic actor access token is not a JWT.');
+  return JSON.parse(Buffer.from(parts[1],'base64url').toString('utf8')) as TokenClaims;
+}
+
+function canonicalActor(claims:TokenClaims,username:string){
+  if(!claims.iss||!claims.sub)throw new Error(
+    `Synthetic actor ${username} token is missing issuer/subject claims.`
   );
-  return JSON.parse(
-    Buffer.from(parts[1],'base64url').toString('utf8')
-  ) as {
-    preferred_username?:string;
-    tenant_id?:string;
-    permissions?:string|string[];
-  };
+  return `${claims.iss}|${claims.sub}`;
 }
 
 async function verifyRealToken(actor:ActorDefinition){
-  const body=new URLSearchParams({
-    client_id:'payroll-web',
-    grant_type:'password',
-    scope:'openid',
-    username:actor.username,
-    password:actorPassword
-  });
-  const response=await fetch(
-    'http://localhost:8081/realms/payroll/protocol/openid-connect/token',
-    {
-      method:'POST',
-      headers:{'content-type':'application/x-www-form-urlencoded'},
-      body:body.toString()
-    }
-  );
-  if(!response.ok)throw new Error(
-    `Synthetic actor token request failed for ${actor.username}: HTTP ${response.status}`
-  );
-  const bodyJson=await response.json() as {access_token?:string};
-  if(!bodyJson.access_token)throw new Error(
-    `Synthetic actor token is missing for ${actor.username}.`
-  );
-  const claims=decodeClaims(bodyJson.access_token);
+  const accessToken=await tokenRequest('payroll','payroll-web',actor.username,actorPassword);
+  const claims=decodeClaims(accessToken);
   if(claims.preferred_username!==actor.username)throw new Error(
     `Unexpected subject username for ${actor.username}.`
   );
@@ -188,6 +196,58 @@ async function verifyRealToken(actor:ActorDefinition){
       `Synthetic actor ${actor.username} token missing permission ${permission}.`
     );
   }
+  return canonicalActor(claims,actor.username);
+}
+
+function authoritySeeds(verifierActorId:string,approverActorId:string):AuthoritySeed[]{
+  return [
+    {actorId:verifierActorId,approvalRole:'VERIFIER',domainCode:'EMPLOYER_BANK_ACCOUNT',actionCode:'VERIFY'},
+    {actorId:verifierActorId,approvalRole:'VERIFIER',domainCode:'EMPLOYER_BANK_ACCOUNT',actionCode:'REQUEST_APPROVAL'},
+    {actorId:verifierActorId,approvalRole:'VERIFIER',domainCode:'AUTHORISED_SIGNATORY',actionCode:'VERIFY'},
+    {actorId:verifierActorId,approvalRole:'VERIFIER',domainCode:'AUTHORISED_SIGNATORY',actionCode:'REQUEST_APPROVAL'},
+    {actorId:approverActorId,approvalRole:'FINAL_APPROVER',domainCode:'EMPLOYER_BANK_ACCOUNT',actionCode:'APPROVE'},
+    {actorId:approverActorId,approvalRole:'FINAL_APPROVER',domainCode:'AUTHORISED_SIGNATORY',actionCode:'APPROVE'}
+  ];
+}
+
+async function seedApplicationAuthorities(
+  verifierActorId:string,
+  approverActorId:string
+){
+  const adminToken=await tokenRequest(
+    'payroll',
+    'payroll-web',
+    'payroll.admin',
+    e2ePassword('E2E_PAYROLL_ADMIN_PASSWORD')
+  );
+
+  for(const seed of authoritySeeds(verifierActorId,approverActorId)){
+    const response=await fetch(
+      'http://localhost:8080/api/v1/foundation-approval-authorities',
+      {
+        method:'POST',
+        headers:{
+          Authorization:`Bearer ${adminToken}`,
+          'content-type':'application/json',
+          'Idempotency-Key':crypto.randomUUID(),
+          'X-Correlation-ID':crypto.randomUUID()
+        },
+        body:JSON.stringify({
+          ownerKind:'LEGAL_ENTITY',
+          ownerId:legalEntityId,
+          approvalRole:seed.approvalRole,
+          domainCode:seed.domainCode,
+          actionCode:seed.actionCode,
+          actorId:seed.actorId,
+          effectiveFrom:'2026-01-01',
+          effectiveTo:null
+        })
+      }
+    );
+    if(response.status!==201)throw new Error(
+      `Approval authority seed failed for ${seed.domainCode}/${seed.actionCode}/${seed.approvalRole}: HTTP ${response.status} ${await response.text()}`
+    );
+  }
 }
 
 setup('provision distinct FBA verifier and approver identities',async({browser})=>{
@@ -196,9 +256,17 @@ setup('provision distinct FBA verifier and approver identities',async({browser})
   const token=await masterToken(values);
   await importActors(token);
 
+  const actorIds=new Map<string,string>();
   for(const actor of actors){
-    await verifyRealToken(actor);
+    actorIds.set(actor.username,await verifyRealToken(actor));
   }
+
+  const verifierActorId=actorIds.get('payroll.fba.verifier');
+  const approverActorId=actorIds.get('payroll.fba.approver');
+  if(!verifierActorId||!approverActorId)throw new Error(
+    'Canonical FBA actor identities were not resolved.'
+  );
+  await seedApplicationAuthorities(verifierActorId,approverActorId);
 
   for(const actor of actors){
     const context=await browser.newContext();

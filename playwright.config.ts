@@ -54,7 +54,8 @@ export default defineConfig({
     },
     {
       name:'setup-fba-actors',
-      testMatch:'fba-actors.setup.ts'
+      testMatch:'fba-actors.setup.ts',
+      dependencies:['setup-admin']
     },
     {
       name:'admin-workflow',
@@ -86,6 +87,15 @@ export default defineConfig({
       name:'foundation-snapshot-readiness',
       testMatch:'foundation-snapshot-readiness.spec.ts',
       dependencies:['foundation-banking-authority'],
+      use:{
+        ...devices['Desktop Chrome'],
+        storageState:path.join(authDirectory,'admin.json')
+      }
+    },
+    {
+      name:'p5-e2e-ui-01',
+      testMatch:'p5-e2e-ui-01.spec.ts',
+      dependencies:['setup-admin'],
       use:{
         ...devices['Desktop Chrome'],
         storageState:path.join(authDirectory,'admin.json')
