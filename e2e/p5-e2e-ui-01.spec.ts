@@ -72,7 +72,7 @@ test('approval authority uses stable organisation identity and supports bounded 
       client_id:'payroll-web',
       grant_type:'password',
       username:'payroll.smoke',
-      password:e2ePassword('PAYROLL_E2E_SMOKE_PASSWORD')
+      password:e2ePassword('E2E_PAYROLL_SMOKE_PASSWORD')
     }}
   );
   expect(smokeTokenResponse.status()).toBe(200);

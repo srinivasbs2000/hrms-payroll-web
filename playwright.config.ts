@@ -54,7 +54,8 @@ export default defineConfig({
     },
     {
       name:'setup-fba-actors',
-      testMatch:'fba-actors.setup.ts'
+      testMatch:'fba-actors.setup.ts',
+      dependencies:['setup-admin']
     },
     {
       name:'admin-workflow',
