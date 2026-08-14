@@ -138,7 +138,7 @@ function CreateCalendarForm({onCreate}:{onCreate:(input:PayrollCalendarWrite)=>P
     <label>Timezone<input required value={timezone} onChange={event=>setTimezone(event.target.value)}/></label>
     {frequency==='CUSTOM'&&<><label>Custom period days<input type="number" min={1} max={366} value={customDays}
       onChange={event=>setCustomDays(Number(event.target.value))}/></label>
-      <label><input type="checkbox" checked={customAuthorised} onChange={event=>setCustomAuthorised(event.target.checked)}/>
+      <label><input type="checkbox" required checked={customAuthorised} onChange={event=>setCustomAuthorised(event.target.checked)}/>
         Custom frequency explicitly authorised</label></>}
     <p className="permission-note">Weekend policy defaults to Saturday/Sunday. Milestone-rule and holiday-calendar write endpoints are not exposed by the current merged backend contract, so this UI does not invent edit controls for them.</p>
     <button type="submit">Create calendar</button>
@@ -155,7 +155,10 @@ function OperationalWorkspace(props:WorkspaceProps){
   const {calendar,operations,lineage,periods,evidence,year,canCreate,canGenerate,onYearChange,onReload,onGenerate,onLifecycle}=props;
   const [paymentDay,setPaymentDay]=useState(31);const [startDate,setStartDate]=useState(`${year}-01-01`);
   const [periodCount,setPeriodCount]=useState(calendar.frequency==='MONTHLY'?12:26);
+  const legacyMonthly=calendar.frequency==='MONTHLY'&&!operations.publicationRequired;
   const blockers=readinessBlockers(operations);
+  const generationBlockers=generationPrerequisiteBlockers(operations);
+  const generationBlocked=generationBlockers.length>0;
   const publishBlocked=publicationPrerequisiteBlockers(operations).length>0;
   return <section>
     <div className="card"><div className="section-heading"><div>
@@ -170,7 +173,8 @@ function OperationalWorkspace(props:WorkspaceProps){
       <h4>Blocking conditions</h4>
       {blockers.length===0?<p className="success">No calendar readiness blockers detected from the authoritative operational state.</p>:
         <ul>{blockers.map(blocker=><li key={blocker}>{blocker}</li>)}</ul>}
-      {canCreate&&<LifecycleControls status={operations.lifecycleStatus} publishBlocked={publishBlocked} onLifecycle={onLifecycle}/>}
+      {!operations.publicationRequired&&<p className="permission-note">Legacy compatibility calendar; publication lifecycle is not required.</p>}
+      {canCreate&&operations.publicationRequired&&<LifecycleControls status={operations.lifecycleStatus} publishBlocked={publishBlocked} onLifecycle={onLifecycle}/>}
     </div>
 
     <div className="card"><h3>Version lineage</h3><ol className="timeline">{lineage.map(item=><li key={item.id}>
@@ -183,14 +187,15 @@ function OperationalWorkspace(props:WorkspaceProps){
       <form className="period-controls" onSubmit={event=>{event.preventDefault();void onReload()}}>
         <label>Period year<input type="number" min={2020} max={2100} value={year}
           onChange={event=>onYearChange(Number(event.target.value))}/></label>
-        {calendar.frequency==='MONTHLY'?<label>Payment day<input type="number" min={1} max={31} value={paymentDay}
+        {legacyMonthly?<label>Payment day<input type="number" min={1} max={31} value={paymentDay}
           onChange={event=>setPaymentDay(Number(event.target.value))}/></label>:<>
           <label>Schedule start<input type="date" value={startDate} onChange={event=>setStartDate(event.target.value)}/></label>
           <label>Period count<input type="number" min={1} max={1000} value={periodCount}
             onChange={event=>setPeriodCount(Number(event.target.value))}/></label></>}
         <button type="submit">Reload periods</button>
-        {canGenerate&&<button type="button" onClick={()=>void onGenerate(calendar.frequency==='MONTHLY'
-          ?{year,paymentDay}:{startDate,periodCount})}>Generate periods</button>}
+        {canGenerate&&<button type="button" disabled={generationBlocked}
+          title={generationBlocked?generationBlockers[0]:undefined}
+          onClick={()=>void onGenerate(legacyMonthly?{year,paymentDay}:{startDate,periodCount})}>Generate periods</button>}
       </form>
       {!canGenerate&&<p className="permission-note">Generation requires <code>calendar.period.generate</code>.</p>}
       <PeriodTable periods={periods} calendar={calendar} year={year}/>
@@ -203,13 +208,23 @@ function OperationalWorkspace(props:WorkspaceProps){
   </section>;
 }
 function publicationPrerequisiteBlockers(operations:CalendarOperational){
+  if(!operations.publicationRequired)return [];
   const blockers:string[]=[];
   if(operations.milestoneRuleCount!==5)blockers.push(`Exactly five milestone rules are required; backend reports ${operations.milestoneRuleCount}.`);
   if(operations.periodCount===0)blockers.push('No generated periods are available.');
   if(operations.frequency==='CUSTOM'&&!operations.customFrequencyAuthorised)blockers.push('Custom frequency has not been explicitly authorised.');
   return blockers;
 }
+function generationPrerequisiteBlockers(operations:CalendarOperational){
+  if(!operations.publicationRequired)return [];
+  const blockers:string[]=[];
+  if(operations.milestoneRuleCount!==5)blockers.push(`Exactly five milestone rules are required; backend reports ${operations.milestoneRuleCount}.`);
+  if(operations.frequency==='CUSTOM'&&!operations.customFrequencyAuthorised)blockers.push('Custom frequency has not been explicitly authorised.');
+  if(operations.lifecycleStatus!=='DRAFT')blockers.push(`Calendar lifecycle is ${operations.lifecycleStatus}; period generation is allowed only while the governed schedule is DRAFT.`);
+  return blockers;
+}
 function readinessBlockers(operations:CalendarOperational){
+  if(!operations.publicationRequired)return operations.periodCount===0?['No generated periods are available.']:[];
   const blockers=publicationPrerequisiteBlockers(operations);
   if(operations.lifecycleStatus!=='PUBLISHED')blockers.push(`Calendar lifecycle is ${operations.lifecycleStatus}; publish before operational use.`);
   return blockers;

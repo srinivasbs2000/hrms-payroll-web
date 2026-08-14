@@ -35,8 +35,11 @@ export function PayGroupPage({api=httpPayGroupApi,permissions}:Props){
 
   async function create(input:PayGroupWrite){
     setError('');
-    try{await api.create(input);await load()}
-    catch(e){setError((e as Error).message)}
+    try{
+      const result=await api.create(input);
+      await select(result);
+      await load();
+    }catch(e){setError((e as Error).message)}
   }
 
   async function approve(item:PayGroupVersion){

@@ -50,9 +50,20 @@ test('renders effective groups and immutable history',async()=>{
   expect(screen.getByText('2026-01-01 to open')).toBeInTheDocument();
 });
 
-test('creates the approved monthly INR configuration shape',async()=>{
-  const api=fakeApi();
-  render(<PayGroupPage api={api} permissions={new Set(['pay-group.read','pay-group.create'])}/>);
+test('keeps a newly-created draft selected so it can be approved',async()=>{
+  const draft={...group,approvalStatus:'DRAFT' as const};
+  const approved={...group,approvalStatus:'APPROVED' as const};
+  const history=vi.fn()
+    .mockResolvedValueOnce([draft])
+    .mockResolvedValueOnce([approved]);
+  const api=fakeApi({
+    create:vi.fn().mockResolvedValue(draft),
+    history,
+    approve:vi.fn().mockResolvedValue(approved)
+  });
+  render(<PayGroupPage api={api} permissions={new Set([
+    'pay-group.read','pay-group.create','pay-group.approve'
+  ])}/>);
   await screen.findByText('No approved pay groups');
 
   fireEvent.change(screen.getByLabelText('Code'),{target:{value:'monthly_in'}});
@@ -68,6 +79,10 @@ test('creates the approved monthly INR configuration shape',async()=>{
     currency:'INR',
     prorationMethod:'CALENDAR_DAYS'
   })));
+  expect(await screen.findByRole('heading',{name:'MONTHLY_IN version timeline'})).toBeInTheDocument();
+  expect(screen.getByText('Version 1: Monthly India')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:'Approve'}));
+  await waitFor(()=>expect(api.approve).toHaveBeenCalledWith(group.identityId,group.versionId));
 });
 
 test('exposes version and optimistic end-date workflows',async()=>{
