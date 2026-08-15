@@ -109,6 +109,15 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         storageState:path.join(authDirectory,'admin.json')
       }
+    },
+    {
+      name:'p5-e2e-ui-01-b02-g03',
+      testMatch:'p5-e2e-ui-01-b02-g03.spec.ts',
+      dependencies:['setup-admin'],
+      use:{
+        ...devices['Desktop Chrome'],
+        storageState:path.join(authDirectory,'admin.json')
+      }
     }
   ]
 });

@@ -1,7 +1,7 @@
-import {fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {expect,test,vi} from 'vitest';
 import {PayGroupPage} from './PayGroupPage';
-import {PayGroupApi,PayGroupVersion} from './pay-group-api';
+import {PayGroupApi,PayGroupRoutingReadiness,PayGroupRoutingRule,PayGroupVersion} from './pay-group-api';
 
 const group:PayGroupVersion={
   identityId:'10000000-0000-0000-0000-000000000001',
@@ -21,6 +21,23 @@ const group:PayGroupVersion={
   supersedesVersionId:null,
   superseded:false
 };
+const routingRule:PayGroupRoutingRule={
+  id:'14000000-0000-0000-0000-000000000001',payGroupVersionId:group.versionId,
+  payrollStatutoryUnitVersionId:group.payrollStatutoryUnitVersionId,
+  establishmentVersionId:null,priority:100,effectiveFrom:'2026-01-01',effectiveTo:null,
+  status:'ACTIVE',versionNo:0
+};
+const readiness:PayGroupRoutingReadiness={
+  payrollAssignmentVersionId:'15000000-0000-0000-0000-000000000001',
+  requestedPayGroupVersionId:group.versionId,effectiveFrom:'2026-01-01',effectiveTo:'2027-01-01',
+  payrollStatutoryUnitVersionId:group.payrollStatutoryUnitVersionId,calendarId:group.calendarId,
+  calendarFrequency:'MONTHLY',calendarTimezone:'Asia/Kolkata',
+  resolutionAtEffectiveFrom:{payGroupVersionId:group.versionId,resolutionSource:'PSU_RULE',
+    routingRuleId:routingRule.id},compatible:true,routingCoverageComplete:true,
+  routingMatchesRequestedPayGroup:true,ready:true,resolutionCheckpoints:[{asOf:'2026-01-01',
+    payGroupVersionId:group.versionId,resolutionSource:'PSU_RULE',routingRuleId:routingRule.id,
+    matchesRequestedPayGroup:true}],issues:[]
+};
 
 function fakeApi(overrides:Partial<PayGroupApi>={}):PayGroupApi{
   return {
@@ -31,6 +48,10 @@ function fakeApi(overrides:Partial<PayGroupApi>={}):PayGroupApi{
     correct:vi.fn().mockResolvedValue({...group,versionSequence:2,approvalStatus:'DRAFT'}),
     endDate:vi.fn().mockResolvedValue({...group,effectiveTo:'2027-01-01',versionNo:2}),
     approve:vi.fn().mockResolvedValue({...group,approvalStatus:'APPROVED'}),
+    routingRules:vi.fn().mockResolvedValue([]),
+    createRoutingRule:vi.fn().mockResolvedValue(routingRule),
+    endDateRoutingRule:vi.fn().mockResolvedValue({...routingRule,effectiveTo:'2027-01-01',versionNo:1}),
+    routingReadiness:vi.fn().mockResolvedValue(readiness),
     ...overrides
   };
 }
@@ -117,4 +138,57 @@ test('surfaces API problem details accessibly',async()=>{
   const api=fakeApi({list:vi.fn().mockRejectedValue(new Error('Tenant context unavailable'))});
   render(<PayGroupPage api={api} permissions={new Set(['pay-group.read'])}/>);
   expect(await screen.findByRole('alert')).toHaveTextContent('Tenant context unavailable');
+});
+
+test('creates and end-dates ranked routing rules with business pay-group selection',async()=>{
+  const api=fakeApi({list:vi.fn().mockResolvedValue([group]),
+    routingRules:vi.fn().mockResolvedValue([routingRule])});
+  render(<PayGroupPage api={api} permissions={new Set([
+    'pay-group.read','pay-group.create','pay-group.version.end-date'
+  ])}/>);
+  expect(await screen.findByRole('table',{name:'Effective pay-group routing rules'})).toBeInTheDocument();
+  expect(screen.getByText('ACTIVE / v0')).toBeInTheDocument();
+  const form=screen.getByRole('form',{name:'Create pay-group routing rule'});
+  const createFields=within(form);
+  fireEvent.change(createFields.getByLabelText('Routing payroll statutory unit version ID'),
+    {target:{value:group.payrollStatutoryUnitVersionId}});
+  fireEvent.change(createFields.getByLabelText('Priority'),{target:{value:'25'}});
+  fireEvent.click(createFields.getByRole('button',{name:'Create routing rule'}));
+  await waitFor(()=>expect(api.createRoutingRule).toHaveBeenCalledWith(expect.objectContaining({
+    payGroupVersionId:group.versionId,payrollStatutoryUnitVersionId:group.payrollStatutoryUnitVersionId,
+    establishmentVersionId:null,priority:25
+  })));
+  const endDateForm=screen.getByRole('form',{name:`End-date routing rule ${routingRule.id}`});
+  const endDateFields=within(endDateForm);
+  fireEvent.change(endDateFields.getByLabelText('End date'),{target:{value:'2026-12-31'}});
+  fireEvent.click(endDateFields.getByRole('button',{name:'End-date rule'}));
+  await waitFor(()=>expect(api.endDateRoutingRule).toHaveBeenCalledWith(
+    routingRule.id,routingRule.versionNo,'2026-12-31'));
+});
+
+test('shows deterministic bounded routing readiness and blocker evidence',async()=>{
+  const blocked={...readiness,compatible:false,routingCoverageComplete:false,
+    routingMatchesRequestedPayGroup:false,ready:false,issues:[{
+      issueCode:'CALENDAR_FREQUENCY_MISMATCH',issueDetail:'Calendar frequency is incompatible.'
+    }],resolutionCheckpoints:[readiness.resolutionCheckpoints[0],{
+      asOf:'2026-07-01',payGroupVersionId:null,resolutionSource:null,routingRuleId:null,
+      matchesRequestedPayGroup:false
+    }]};
+  const api=fakeApi({list:vi.fn().mockResolvedValue([group]),
+    routingReadiness:vi.fn().mockResolvedValue(blocked)});
+  render(<PayGroupPage api={api} permissions={new Set(['pay-group.read'])}/>);
+  const form=await screen.findByRole('form',{name:'Inspect routing readiness'});
+  const readinessFields=within(form);
+  fireEvent.change(readinessFields.getByLabelText('Payroll assignment version ID'),
+    {target:{value:blocked.payrollAssignmentVersionId}});
+  fireEvent.change(readinessFields.getByLabelText('Readiness effective from'),{target:{value:'2026-01-01'}});
+  fireEvent.change(readinessFields.getByLabelText('Readiness effective to'),{target:{value:'2027-01-01'}});
+  fireEvent.click(readinessFields.getByRole('button',{name:'Inspect routing readiness'}));
+  expect(await screen.findByText('BLOCKED')).toBeInTheDocument();
+  expect(screen.getByText(/CALENDAR_FREQUENCY_MISMATCH/)).toBeInTheDocument();
+  expect(screen.getByRole('table',{name:'Routing resolution checkpoints'})).toHaveTextContent('2026-07-01');
+  await waitFor(()=>expect(api.routingReadiness).toHaveBeenCalledWith({
+    payrollAssignmentVersionId:blocked.payrollAssignmentVersionId,
+    payGroupVersionId:group.versionId,effectiveFrom:'2026-01-01',effectiveTo:'2027-01-01'
+  }));
 });

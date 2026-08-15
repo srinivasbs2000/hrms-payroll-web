@@ -10,6 +10,8 @@
 .period-controls{display:grid;grid-template-columns:repeat(2,minmax(8rem,1fr)) auto auto;gap:.75rem;align-items:end;margin-bottom:1rem}
 .success{border-left:4px solid #2c7a59;background:#edf8f2;padding:.8rem;color:#1d5c43}
 .table-scroll{overflow-x:auto}
+.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.readiness-evidence{margin-top:1rem;padding-top:1rem;border-top:1px solid #e5e9e3}
 table caption{text-align:left;font-weight:700;padding:.5rem 0 .8rem}
 .badge.open{background:#dff1e9;color:#185942}
 .badge.closed{background:#e9eee9;color:#40554d}

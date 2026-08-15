@@ -28,6 +28,67 @@ export interface PayGroupWrite {
   effectiveTo?:string;
 }
 
+export interface PayGroupRoutingRuleWrite {
+  payGroupVersionId:string;
+  payrollStatutoryUnitVersionId:string;
+  establishmentVersionId?:string|null;
+  priority?:number;
+  effectiveFrom:string;
+  effectiveTo?:string|null;
+}
+
+export interface PayGroupRoutingRule extends Required<Omit<PayGroupRoutingRuleWrite,'establishmentVersionId'|'effectiveTo'>> {
+  id:string;
+  establishmentVersionId:string|null;
+  effectiveTo:string|null;
+  status:'ACTIVE'|'INACTIVE';
+  versionNo:number;
+}
+
+export interface PayGroupResolution {
+  payGroupVersionId:string;
+  resolutionSource:'EXPLICIT_ASSIGNMENT'|'ESTABLISHMENT_RULE'|'PSU_RULE';
+  routingRuleId:string|null;
+}
+
+export interface PayGroupResolutionCheckpoint {
+  asOf:string;
+  payGroupVersionId:string|null;
+  resolutionSource:PayGroupResolution['resolutionSource']|null;
+  routingRuleId:string|null;
+  matchesRequestedPayGroup:boolean;
+}
+
+export interface PayGroupCompatibilityIssue {
+  issueCode:string;
+  issueDetail:string;
+}
+
+export interface PayGroupRoutingReadiness {
+  payrollAssignmentVersionId:string;
+  requestedPayGroupVersionId:string;
+  effectiveFrom:string;
+  effectiveTo:string;
+  payrollStatutoryUnitVersionId:string|null;
+  calendarId:string|null;
+  calendarFrequency:string|null;
+  calendarTimezone:string|null;
+  resolutionAtEffectiveFrom:PayGroupResolution|null;
+  compatible:boolean;
+  routingCoverageComplete:boolean;
+  routingMatchesRequestedPayGroup:boolean;
+  ready:boolean;
+  resolutionCheckpoints:PayGroupResolutionCheckpoint[];
+  issues:PayGroupCompatibilityIssue[];
+}
+
+export interface PayGroupRoutingReadinessQuery {
+  payrollAssignmentVersionId:string;
+  payGroupVersionId:string;
+  effectiveFrom:string;
+  effectiveTo:string;
+}
+
 export interface PayGroupApi {
   list(asOf:string):Promise<PayGroupVersion[]>;
   history(identityId:string):Promise<PayGroupVersion[]>;
@@ -36,6 +97,10 @@ export interface PayGroupApi {
   correct(identityId:string,versionId:string,input:PayGroupWrite):Promise<PayGroupVersion>;
   endDate(identityId:string,versionId:string,versionNo:number,effectiveTo:string):Promise<PayGroupVersion>;
   approve(identityId:string,versionId:string):Promise<PayGroupVersion>;
+  routingRules(asOf:string):Promise<PayGroupRoutingRule[]>;
+  createRoutingRule(input:PayGroupRoutingRuleWrite):Promise<PayGroupRoutingRule>;
+  endDateRoutingRule(ruleId:string,versionNo:number,effectiveTo:string):Promise<PayGroupRoutingRule>;
+  routingReadiness(query:PayGroupRoutingReadinessQuery):Promise<PayGroupRoutingReadiness>;
 }
 
 async function request<T>(path:string,init:RequestInit={}):Promise<T>{
@@ -70,5 +135,19 @@ export const httpPayGroupApi:PayGroupApi={
     headers:{'If-Match':String(versionNo)},
     body:JSON.stringify({effectiveTo})
   }),
-  approve:(id,version)=>request(`/pay-groups/${id}/versions/${version}/approval`,{method:'POST'})
+  approve:(id,version)=>request(`/pay-groups/${id}/versions/${version}/approval`,{method:'POST'}),
+  routingRules:asOf=>request(`/pay-groups/routing-rules?asOf=${encodeURIComponent(asOf)}`),
+  createRoutingRule:input=>request('/pay-groups/routing-rules',{
+    method:'POST',body:JSON.stringify(input)
+  }),
+  endDateRoutingRule:(ruleId,versionNo,effectiveTo)=>request(
+    `/pay-groups/routing-rules/${ruleId}/end-date`,{
+      method:'POST',headers:{'If-Match':String(versionNo)},body:JSON.stringify({effectiveTo})
+    }),
+  routingReadiness:query=>request(`/pay-groups/routing-readiness?${new URLSearchParams({
+    payrollAssignmentVersionId:query.payrollAssignmentVersionId,
+    payGroupVersionId:query.payGroupVersionId,
+    effectiveFrom:query.effectiveFrom,
+    effectiveTo:query.effectiveTo
+  })}`)
 };
