@@ -1,6 +1,9 @@
 import {FormEvent,useCallback,useEffect,useMemo,useState} from 'react';
 import {currentPermissions} from '../organisation/organisation-api';
-import {httpPayGroupApi,PayGroupApi,PayGroupVersion,PayGroupWrite} from './pay-group-api';
+import {
+  httpPayGroupApi,PayGroupApi,PayGroupRoutingReadiness,PayGroupRoutingReadinessQuery,
+  PayGroupRoutingRule,PayGroupRoutingRuleWrite,PayGroupVersion,PayGroupWrite
+} from './pay-group-api';
 
 type Props={api?:PayGroupApi;permissions?:Set<string>};
 
@@ -12,6 +15,8 @@ export function PayGroupPage({api=httpPayGroupApi,permissions}:Props){
   const [groups,setGroups]=useState<PayGroupVersion[]>([]);
   const [history,setHistory]=useState<PayGroupVersion[]>([]);
   const [selected,setSelected]=useState<PayGroupVersion|null>(null);
+  const [routingRules,setRoutingRules]=useState<PayGroupRoutingRule[]>([]);
+  const [routingReadiness,setRoutingReadiness]=useState<PayGroupRoutingReadiness|null>(null);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState('');
   const canRead=effectivePermissions.has('pay-group.read');
@@ -20,7 +25,12 @@ export function PayGroupPage({api=httpPayGroupApi,permissions}:Props){
   const load=useCallback(async()=>{
     if(!canRead)return;
     setLoading(true);setError('');
-    try{setGroups(await api.list(asOf));}
+    try{
+      const [effectiveGroups,effectiveRules]=await Promise.all([
+        api.list(asOf),api.routingRules(asOf)
+      ]);
+      setGroups(effectiveGroups);setRoutingRules(effectiveRules);
+    }
     catch(e){setError((e as Error).message);}
     finally{setLoading(false)}
   },[api,asOf,canRead]);
@@ -73,6 +83,26 @@ export function PayGroupPage({api=httpPayGroupApi,permissions}:Props){
         item.identityId,item.versionId,item.versionNo,effectiveTo);
       await select(result);await load();
     }catch(e){setError((e as Error).message)}
+  }
+
+  async function createRoutingRule(input:PayGroupRoutingRuleWrite){
+    setError('');
+    try{await api.createRoutingRule(input);setRoutingRules(await api.routingRules(asOf));}
+    catch(e){setError((e as Error).message)}
+  }
+
+  async function endDateRoutingRule(item:PayGroupRoutingRule,effectiveTo:string){
+    setError('');
+    try{
+      await api.endDateRoutingRule(item.id,item.versionNo,effectiveTo);
+      setRoutingRules(await api.routingRules(asOf));
+    }catch(e){setError((e as Error).message)}
+  }
+
+  async function inspectRoutingReadiness(query:PayGroupRoutingReadinessQuery){
+    setError('');setRoutingReadiness(null);
+    try{setRoutingReadiness(await api.routingReadiness(query))}
+    catch(e){setError((e as Error).message)}
   }
 
   if(!canRead){
@@ -131,6 +161,10 @@ export function PayGroupPage({api=httpPayGroupApi,permissions}:Props){
         Create controls are hidden because <code>pay-group.create</code> is not granted.
       </p>}
 
+    <RoutingWorkspace groups={groups} rules={routingRules} permissions={effectivePermissions}
+      onCreate={createRoutingRule} onEndDate={endDateRoutingRule}
+      readiness={routingReadiness} onInspectReadiness={inspectRoutingReadiness}/>
+
     {selected&&
       <PayGroupTimeline
         selected={selected}
@@ -143,6 +177,144 @@ export function PayGroupPage({api=httpPayGroupApi,permissions}:Props){
       />}
   </section>;
 }
+
+type RoutingWorkspaceProps={
+  groups:PayGroupVersion[];
+  rules:PayGroupRoutingRule[];
+  permissions:Set<string>;
+  readiness:PayGroupRoutingReadiness|null;
+  onCreate:(input:PayGroupRoutingRuleWrite)=>Promise<void>;
+  onEndDate:(item:PayGroupRoutingRule,effectiveTo:string)=>Promise<void>;
+  onInspectReadiness:(query:PayGroupRoutingReadinessQuery)=>Promise<void>;
+};
+
+function RoutingWorkspace({groups,rules,permissions,readiness,onCreate,onEndDate,onInspectReadiness}:RoutingWorkspaceProps){
+  const canCreate=permissions.has('pay-group.create');
+  const canEndDate=permissions.has('pay-group.version.end-date');
+  return <section className="card" aria-labelledby="routing-title">
+    <div className="section-heading"><div><h3 id="routing-title">Assignment routing & readiness</h3>
+      <p>Ranked PSU/establishment rules, deterministic resolution and bounded compatibility evidence.</p>
+    </div><span className="count-badge">{rules.length} effective rules</span></div>
+    <RoutingRuleTable rules={rules} canEndDate={canEndDate} onEndDate={onEndDate}/>
+    {canCreate?<RoutingRuleForm groups={groups} onCreate={onCreate}/>:<p className="permission-note">
+      Routing-rule creation requires <code>pay-group.create</code>.</p>}
+    <RoutingReadinessForm groups={groups} onInspect={onInspectReadiness}/>
+    {readiness&&<RoutingReadinessEvidence evidence={readiness}/>}
+  </section>;
+}
+
+function RoutingRuleTable({rules,canEndDate,onEndDate}:{
+  rules:PayGroupRoutingRule[];canEndDate:boolean;
+  onEndDate:(item:PayGroupRoutingRule,effectiveTo:string)=>Promise<void>;
+}){
+  if(rules.length===0)return <p>No routing rules are effective on the selected date.</p>;
+  return <div className="table-scroll"><table aria-label="Effective pay-group routing rules">
+    <thead><tr><th>Priority</th><th>Pay group</th><th>PSU</th><th>Establishment</th>
+      <th>Effective range</th><th>Status/version</th><th>Action</th></tr></thead>
+    <tbody>{rules.map(rule=><RoutingRuleRow key={rule.id} rule={rule}
+      canEndDate={canEndDate} onEndDate={onEndDate}/>)}</tbody></table></div>;
+}
+
+function RoutingRuleRow({rule,canEndDate,onEndDate}:{
+  rule:PayGroupRoutingRule;canEndDate:boolean;
+  onEndDate:(item:PayGroupRoutingRule,effectiveTo:string)=>Promise<void>;
+}){
+  const [effectiveTo,setEffectiveTo]=useState(rule.effectiveTo??'');
+  return <tr><td>{rule.priority}</td><td><code>{rule.payGroupVersionId}</code></td>
+    <td><code>{rule.payrollStatutoryUnitVersionId}</code></td>
+    <td>{rule.establishmentVersionId?<code>{rule.establishmentVersionId}</code>:'All establishments'}</td>
+    <td>{rule.effectiveFrom} → {rule.effectiveTo??'open'}</td>
+    <td>{rule.status} / v{rule.versionNo}</td><td>{canEndDate&&rule.status==='ACTIVE'?
+      <form className="inline-form" aria-label={`End-date routing rule ${rule.id}`}
+        onSubmit={event=>{event.preventDefault();void onEndDate(rule,effectiveTo)}}>
+        <label>End date<input required type="date" value={effectiveTo}
+          onChange={event=>setEffectiveTo(event.target.value)}/></label>
+        <button type="submit">End-date rule</button>
+      </form>:'—'}</td></tr>;
+}
+
+function RoutingRuleForm({groups,onCreate}:{groups:PayGroupVersion[];
+  onCreate:(input:PayGroupRoutingRuleWrite)=>Promise<void>}){
+  const [payGroupVersionId,setPayGroupVersionId]=useState(groups[0]?.versionId??'');
+  const [psuVersionId,setPsuVersionId]=useState('');
+  const [establishmentVersionId,setEstablishmentVersionId]=useState('');
+  const [priority,setPriority]=useState(100);
+  const [effectiveFrom,setEffectiveFrom]=useState(today);
+  const [effectiveTo,setEffectiveTo]=useState('');
+  useEffect(()=>{if(!payGroupVersionId&&groups[0])setPayGroupVersionId(groups[0].versionId)},[groups,payGroupVersionId]);
+  return <form className="form-grid lifecycle-form" aria-label="Create pay-group routing rule"
+    onSubmit={event=>{event.preventDefault();void onCreate({payGroupVersionId,
+      payrollStatutoryUnitVersionId:psuVersionId,
+      establishmentVersionId:establishmentVersionId||null,priority,effectiveFrom,
+      effectiveTo:effectiveTo||null})}}>
+    <h4>Create routing rule</h4>
+    <label>Pay group<select required value={payGroupVersionId}
+      onChange={event=>setPayGroupVersionId(event.target.value)}>
+      <option value="">Select a pay group</option>{groups.map(group=><option key={group.versionId}
+        value={group.versionId}>{group.code} — {group.name} (v{group.versionSequence})</option>)}
+    </select></label>
+    <label>Routing payroll statutory unit version ID<input required value={psuVersionId}
+      onChange={event=>setPsuVersionId(event.target.value)}/></label>
+    <label>Establishment version ID (optional)<input value={establishmentVersionId}
+      onChange={event=>setEstablishmentVersionId(event.target.value)}/></label>
+    <label>Priority<input required type="number" min={1} value={priority}
+      onChange={event=>setPriority(Number(event.target.value))}/></label>
+    <label>Routing effective from<input required type="date" value={effectiveFrom}
+      onChange={event=>setEffectiveFrom(event.target.value)}/></label>
+    <label>Routing effective to<input type="date" value={effectiveTo}
+      onChange={event=>setEffectiveTo(event.target.value)}/></label>
+    <button type="submit">Create routing rule</button>
+  </form>;
+}
+
+function RoutingReadinessForm({groups,onInspect}:{groups:PayGroupVersion[];
+  onInspect:(query:PayGroupRoutingReadinessQuery)=>Promise<void>}){
+  const [assignmentVersionId,setAssignmentVersionId]=useState('');
+  const [payGroupVersionId,setPayGroupVersionId]=useState(groups[0]?.versionId??'');
+  const [effectiveFrom,setEffectiveFrom]=useState(today);
+  const [effectiveTo,setEffectiveTo]=useState(()=>{
+    const value=new Date();value.setUTCDate(value.getUTCDate()+1);return value.toISOString().slice(0,10);
+  });
+  useEffect(()=>{if(!payGroupVersionId&&groups[0])setPayGroupVersionId(groups[0].versionId)},[groups,payGroupVersionId]);
+  return <form className="form-grid lifecycle-form" aria-label="Inspect routing readiness"
+    onSubmit={event=>{event.preventDefault();void onInspect({payrollAssignmentVersionId:assignmentVersionId,
+      payGroupVersionId,effectiveFrom,effectiveTo})}}>
+    <h4>Inspect bounded routing readiness</h4>
+    <label>Payroll assignment version ID<input required value={assignmentVersionId}
+      onChange={event=>setAssignmentVersionId(event.target.value)}/></label>
+    <label>Requested pay group<select required value={payGroupVersionId}
+      onChange={event=>setPayGroupVersionId(event.target.value)}>
+      <option value="">Select a pay group</option>{groups.map(group=><option key={group.versionId}
+        value={group.versionId}>{group.code} — {group.name}</option>)}</select></label>
+    <label>Readiness effective from<input required type="date" value={effectiveFrom}
+      onChange={event=>setEffectiveFrom(event.target.value)}/></label>
+    <label>Readiness effective to<input required type="date" value={effectiveTo}
+      onChange={event=>setEffectiveTo(event.target.value)}/></label>
+    <button type="submit">Inspect routing readiness</button>
+  </form>;
+}
+
+function RoutingReadinessEvidence({evidence}:{evidence:PayGroupRoutingReadiness}){
+  return <section className="readiness-evidence" aria-labelledby="routing-readiness-title">
+    <div className="section-heading"><h4 id="routing-readiness-title">Routing readiness evidence</h4>
+      <span className={`badge ${evidence.ready?'approved':'draft'}`}>{evidence.ready?'READY':'BLOCKED'}</span></div>
+    <div className="action-summary"><span>Compatible: {yesNo(evidence.compatible)}</span>
+      <span>Interval covered: {yesNo(evidence.routingCoverageComplete)}</span>
+      <span>Requested group matched: {yesNo(evidence.routingMatchesRequestedPayGroup)}</span>
+      <span>Calendar: {evidence.calendarFrequency??'unresolved'} / {evidence.calendarTimezone??'unresolved'}</span>
+      <span>Resolution at start: {evidence.resolutionAtEffectiveFrom?.resolutionSource??'unresolved'}</span></div>
+    {evidence.issues.length>0&&<ul aria-label="Routing compatibility blockers">{evidence.issues.map(issue=><li
+      key={`${issue.issueCode}:${issue.issueDetail}`}><strong>{issue.issueCode}</strong>: {issue.issueDetail}</li>)}</ul>}
+    <div className="table-scroll"><table aria-label="Routing resolution checkpoints"><thead><tr>
+      <th>As of</th><th>Resolved pay group</th><th>Source</th><th>Rule</th><th>Match</th></tr></thead>
+      <tbody>{evidence.resolutionCheckpoints.map(checkpoint=><tr key={`${checkpoint.asOf}:${checkpoint.routingRuleId??'none'}`}>
+        <td>{checkpoint.asOf}</td><td>{checkpoint.payGroupVersionId??'Unresolved'}</td>
+        <td>{checkpoint.resolutionSource??'Unresolved'}</td><td>{checkpoint.routingRuleId??'—'}</td>
+        <td>{yesNo(checkpoint.matchesRequestedPayGroup)}</td></tr>)}</tbody></table></div>
+  </section>;
+}
+
+const yesNo=(value:boolean)=>value?'Yes':'No';
 
 function CreatePayGroupForm({onCreate}:{onCreate:(input:PayGroupWrite)=>Promise<void>}){
   const [code,setCode]=useState('');
