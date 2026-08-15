@@ -1,5 +1,6 @@
 import {Navigate,NavLink,Route,Routes} from 'react-router-dom';
 import {useAuth} from './auth/AuthProvider';
+import {ComponentControlsPage} from './features/component-controls/ComponentControlsPage';
 import {DraftPayslipPage} from './features/draft-payslip/DraftPayslipPage';
 import {EmployeePayrollPage} from './features/employee-payroll/EmployeePayrollPage';
 import {FoundationApprovalAuthorityPage} from './features/foundation-approval-authority/FoundationApprovalAuthorityPage';
@@ -23,6 +24,7 @@ const navigation=[
   {to:'/payroll-calendars',label:'Payroll calendars',permission:'calendar.read'},
   {to:'/pay-groups',label:'Pay groups',permission:'pay-group.read'},
   {to:'/pay-components',label:'Pay components',permission:'compensation.component.read'},
+  {to:'/component-controls',label:'Component controls',permission:'compensation.component.read'},
   {to:'/payroll-bases',label:'Payroll bases',permission:'compensation.base.read'},
   {to:'/salary-structures',label:'Compensation design',permission:'compensation.structure.read'},
   {to:'/employee-payroll',label:'Employee payroll',permission:'employee-payroll.relationship.read'},
@@ -57,6 +59,7 @@ export function App(){
       <Route path="/payroll-calendars" element={<PayrollCalendarPage/>}/>
       <Route path="/pay-groups" element={<PayGroupPage/>}/>
       <Route path="/pay-components" element={<PayComponentPage/>}/>
+      <Route path="/component-controls" element={<ComponentControlsPage/>}/>
       <Route path="/payroll-bases" element={<PayrollBasePage/>}/>
       <Route path="/salary-structures" element={<SalaryStructurePage/>}/>
       <Route path="/employee-payroll" element={<EmployeePayrollPage/>}/>
