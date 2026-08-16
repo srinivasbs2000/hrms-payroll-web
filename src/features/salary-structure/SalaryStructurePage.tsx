@@ -5,6 +5,7 @@ import {CtcPolicyPanel} from './CtcPolicyPanel';
 import {EligibilityRulePanel} from './EligibilityRulePanel';
 import {FlexBenefitPlanPanel} from './FlexBenefitPlanPanel';
 import {SalaryStructureSimulationPanel} from './SalaryStructureSimulationPanel';
+import {SalaryStructureLifecyclePanel} from './SalaryStructureLifecyclePanel';
 import {executionModeLabel,salaryTargetContractFor,salaryTargetContracts} from './salary-target-contract';
 import {httpCompensationConfigurationApi} from './salary-structure-api';
 import type {
@@ -92,10 +93,7 @@ export function SalaryStructurePage({api=httpCompensationConfigurationApi,permis
       await load();await select(result)}
     catch(value){setError((value as Error).message)}
   }
-  async function approve(item:SalaryStructureVersion){
-    setError('');try{const result=await api.approveStructure(item.identityId,item.versionId);await load();await select(result)}
-    catch(value){setError((value as Error).message)}
-  }
+
 
   if(!canRead)return <section className="card"><h2>Compensation design</h2>
     <p role="alert">You do not have permission to view salary structures.</p></section>;
@@ -143,9 +141,7 @@ export function SalaryStructurePage({api=httpCompensationConfigurationApi,permis
         <ol className="compact-timeline">{history.map(item=><li key={item.versionId}>
           <span><strong>v{item.versionSequence} {item.name}</strong>
             <small>{item.structureType} · {item.payFrequency} · validation {item.validationFingerprint?'bound':'not bound'}</small></span>
-          {item.approvalStatus==='DRAFT'&&item.validationFingerprint
-            &&granted.has('compensation.structure.approve')
-            &&<button onClick={()=>void approve(item)}>Approve validated structure</button>}
+
         </li>)}</ol>
         {lifecycleActions.length>0&&<StructureEditor key={selected.versionId}
           title="Salary-structure version lifecycle" initial={selected}
@@ -157,6 +153,7 @@ export function SalaryStructurePage({api=httpCompensationConfigurationApi,permis
           value={endDateValue} onChange={event=>setEndDateValue(event.target.value)}/></label>
           <button type="submit">End-date structure version</button></form>}
         <SalaryStructureSimulationPanel api={api} permissions={granted} structure={selected}/>
+        <SalaryStructureLifecyclePanel permissions={granted} structure={selected}/>
       </section>}
     </>}
   </section>;
