@@ -118,6 +118,24 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         storageState:path.join(authDirectory,'admin.json')
       }
+    },
+    {
+      name:'p5-ccf-01-g03-admin',
+      testMatch:'p5-ccf-01-g03.spec.ts',
+      dependencies:['setup-admin'],
+      use:{
+        ...devices['Desktop Chrome'],
+        storageState:path.join(authDirectory,'admin.json')
+      }
+    },
+    {
+      name:'p5-ccf-01-g03-read-only',
+      testMatch:'p5-ccf-01-g03.spec.ts',
+      dependencies:['setup-smoke'],
+      use:{
+        ...devices['Desktop Chrome'],
+        storageState:path.join(authDirectory,'smoke.json')
+      }
     }
   ]
 });

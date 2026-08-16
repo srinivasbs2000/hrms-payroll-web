@@ -45,10 +45,19 @@ export function ComponentControlsPage({
   const [rounding,setRounding]=useState<RoundingPolicyView[]>([]);
   const [proration,setProration]=useState<ProrationPolicyView[]>([]);
   const [selectedComponent,setSelectedComponent]=useState<PayComponentVersion|null>(null);
+  const [componentSearch,setComponentSearch]=useState('');
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState('');
 
   const canRead=effectivePermissions.has('compensation.component.read');
+  const filteredComponents=useMemo(()=>{
+    const query=componentSearch.trim().toLocaleLowerCase();
+    if(!query)return components;
+    return components.filter(component=>
+      component.code.toLocaleLowerCase().includes(query)||
+      component.name.toLocaleLowerCase().includes(query)
+    );
+  },[componentSearch,components]);
 
   const load=useCallback(async()=>{
     if(!canRead)return;
@@ -95,9 +104,15 @@ export function ComponentControlsPage({
 
     <div className="card">
       <h3>Component control target</h3>
+      <label>Search components
+        <input aria-label="Search components" type="search" value={componentSearch}
+          placeholder="Code or name"
+          onChange={event=>setComponentSearch(event.target.value)}/>
+      </label>
       {components.length===0?<p>No approved components are effective on {asOf}.</p>:
+        filteredComponents.length===0?<p>No components match &quot;{componentSearch.trim()}&quot;.</p>:
         <div className="pay-group-list">
-          {components.map(component=><button key={component.versionId}
+          {filteredComponents.map(component=><button key={component.versionId}
             className="tree-item"
             aria-pressed={selectedComponent?.identityId===component.identityId}
             onClick={()=>setSelectedComponent(component)}>

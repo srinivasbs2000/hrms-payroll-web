@@ -102,6 +102,38 @@ test('rejects component controls without read authority',()=>{
   expect(api.listComponents).not.toHaveBeenCalled();
 });
 
+test('searches component control targets by code or name',async()=>{
+  const allowance:PayComponentVersion={
+    ...component,
+    identityId:'20000000-0000-0000-0000-000000000002',
+    versionId:'21000000-0000-0000-0000-000000000002',
+    code:'SPECIAL_ALLOWANCE',
+    name:'Special Allowance'
+  };
+  const api=fakeApi({listComponents:vi.fn().mockResolvedValue([component,allowance])});
+  render(<ComponentControlsPage api={api} permissions={
+    new Set(['compensation.component.read'])
+  }/>);
+
+  await screen.findByRole('button',{name:/SPECIAL_ALLOWANCE/});
+  fireEvent.change(screen.getByLabelText('Search components'),{
+    target:{value:'basic'}
+  });
+  expect(screen.getByRole('button',{name:/BASIC/})).toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:/SPECIAL_ALLOWANCE/})).not.toBeInTheDocument();
+
+  fireEvent.change(screen.getByLabelText('Search components'),{
+    target:{value:'allowance'}
+  });
+  expect(screen.getByRole('button',{name:/SPECIAL_ALLOWANCE/})).toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:/BASIC/})).not.toBeInTheDocument();
+
+  fireEvent.change(screen.getByLabelText('Search components'),{
+    target:{value:'not-present'}
+  });
+  expect(screen.getByText('No components match "not-present".')).toBeInTheDocument();
+});
+
 test('validates formulas and inspects component impact',async()=>{
   const api=fakeApi();
   render(<ComponentControlsPage api={api} permissions={
