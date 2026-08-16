@@ -3,6 +3,7 @@ import type {FormEvent} from 'react';
 import {currentPermissions} from '../organisation/organisation-api';
 import {CtcPolicyPanel} from './CtcPolicyPanel';
 import {EligibilityRulePanel} from './EligibilityRulePanel';
+import {FlexBenefitPlanPanel} from './FlexBenefitPlanPanel';
 import {SalaryStructureSimulationPanel} from './SalaryStructureSimulationPanel';
 import {executionModeLabel,salaryTargetContractFor,salaryTargetContracts} from './salary-target-contract';
 import {httpCompensationConfigurationApi} from './salary-structure-api';
@@ -13,7 +14,7 @@ import type {
 } from './salary-structure-api';
 
 type Props={api?:CompensationConfigurationApi;permissions?:Set<string>};
-type Tab='STRUCTURES'|'CTC'|'ELIGIBILITY';
+type Tab='STRUCTURES'|'CTC'|'ELIGIBILITY'|'FLEX';
 type DraftLine={
   key:string;componentVersionId:string;lineType:SalaryLineType;value:string;
   baseCode:string;minimumAmount:string;maximumAmount:string;mandatory:boolean;
@@ -119,9 +120,11 @@ export function SalaryStructurePage({api=httpCompensationConfigurationApi,permis
       <button role="tab" aria-selected={tab==='STRUCTURES'} onClick={()=>setTab('STRUCTURES')}>Salary structures</button>
       <button role="tab" aria-selected={tab==='CTC'} onClick={()=>setTab('CTC')}>CTC policies</button>
       <button role="tab" aria-selected={tab==='ELIGIBILITY'} onClick={()=>setTab('ELIGIBILITY')}>Eligibility rules</button>
+      <button role="tab" aria-selected={tab==='FLEX'} onClick={()=>setTab('FLEX')}>Flexible benefits</button>
     </div>
     {tab==='CTC'&&<CtcPolicyPanel api={api} permissions={granted} asOf={asOf} components={components}/>}
     {tab==='ELIGIBILITY'&&<EligibilityRulePanel api={api} permissions={granted} asOf={asOf}/>}
+    {tab==='FLEX'&&<FlexBenefitPlanPanel permissions={granted} asOf={asOf}/>}
     {tab==='STRUCTURES'&&<>
       <section className="card"><h3>Effective structures</h3>
         {items.length===0?<p>No approved structures effective on {asOf}.</p>:
