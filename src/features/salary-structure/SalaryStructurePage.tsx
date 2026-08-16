@@ -4,11 +4,12 @@ import {currentPermissions} from '../organisation/organisation-api';
 import {CtcPolicyPanel} from './CtcPolicyPanel';
 import {EligibilityRulePanel} from './EligibilityRulePanel';
 import {SalaryStructureSimulationPanel} from './SalaryStructureSimulationPanel';
+import {executionModeLabel,salaryTargetContractFor,salaryTargetContracts} from './salary-target-contract';
 import {httpCompensationConfigurationApi} from './salary-structure-api';
 import type {
   CompensationConfigurationApi,CtcPolicyVersion,EligibilityRuleVersion,
-  OverridePolicy,SalaryLineType,SalaryStructureComponentOption,
-  SalaryStructureLineView,SalaryStructureVersion,SalaryStructureWrite
+  OverridePolicy,SalaryLineType,SalaryStructureComponentOption,SalaryStructurePayrollBaseOption,
+  SalaryStructureLineView,SalaryStructureVersion,SalaryStructureWrite,SalaryTargetType
 } from './salary-structure-api';
 
 type Props={api?:CompensationConfigurationApi;permissions?:Set<string>};
@@ -34,6 +35,7 @@ export function SalaryStructurePage({api=httpCompensationConfigurationApi,permis
   const [items,setItems]=useState<SalaryStructureVersion[]>([]);
   const [history,setHistory]=useState<SalaryStructureVersion[]>([]);
   const [components,setComponents]=useState<SalaryStructureComponentOption[]>([]);
+  const [bases,setBases]=useState<SalaryStructurePayrollBaseOption[]>([]);
   const [ctc,setCtc]=useState<CtcPolicyVersion[]>([]);
   const [rules,setRules]=useState<EligibilityRuleVersion[]>([]);
   const [selected,setSelected]=useState<SalaryStructureVersion|null>(null);
@@ -45,15 +47,17 @@ export function SalaryStructurePage({api=httpCompensationConfigurationApi,permis
     if(!canRead)return;
     setError('');
     try{
-      const [structures,componentOptions,policies,eligibility]=await Promise.all([
+      const [structures,componentOptions,baseOptions,policies,eligibility]=await Promise.all([
         api.listStructures(asOf),
         granted.has('compensation.component.read')?api.listComponents(asOf):Promise.resolve([]),
+        granted.has('compensation.base.read')&&api.listPayrollBases?api.listPayrollBases(asOf):Promise.resolve([]),
         granted.has('compensation.ctc-policy.read')?api.ctcList(asOf):Promise.resolve([]),
         granted.has('compensation.eligibility-rule.read')?api.eligibilityList(asOf):Promise.resolve([])
       ]);
       setItems(structures);
       setComponents(componentOptions.filter(item=>
         item.approvalStatus===undefined||item.approvalStatus==='APPROVED'));
+      setBases(baseOptions.filter(item=>item.approvalStatus==='APPROVED'));
       setCtc(policies);
       setRules(eligibility);
     }catch(value){setError((value as Error).message)}
@@ -124,10 +128,11 @@ export function SalaryStructurePage({api=httpCompensationConfigurationApi,permis
           <div className="configuration-list">{items.map(item=><button
             className="configuration-button" key={item.versionId} onClick={()=>void select(item)}>
             <strong>{item.code}</strong><span>{item.name}</span>
-            <small>{item.targetType} · {item.targetAnnualAmount} INR</small></button>)}</div>}
+            <small>{targetSummary(item)}</small></button>)}</div>}
       </section>
       {granted.has('compensation.structure.create')&&<StructureEditor
         title="Create schema-1 structure draft" requireCode components={components}
+        bases={bases} canReadBases={granted.has('compensation.base.read')}
         policies={ctc} rules={rules} submitLabel="Create schema-1 structure draft" submit={create}/>}
       {selected&&<section className="card">
         <div className="section-heading"><h3>{selected.code} version timeline</h3>
@@ -141,7 +146,8 @@ export function SalaryStructurePage({api=httpCompensationConfigurationApi,permis
         </li>)}</ol>
         {lifecycleActions.length>0&&<StructureEditor key={selected.versionId}
           title="Salary-structure version lifecycle" initial={selected}
-          components={components} policies={ctc} rules={rules} actions={lifecycleActions}/>}
+          components={components} bases={bases} canReadBases={granted.has('compensation.base.read')}
+          policies={ctc} rules={rules} actions={lifecycleActions}/>}
         {granted.has('compensation.structure.version.end-date')&&<form
           className="form-grid lifecycle-form" aria-label="End-date structure version"
           onSubmit={event=>void endDate(event)}><label>Structure end date<input required type="date"
@@ -154,9 +160,10 @@ export function SalaryStructurePage({api=httpCompensationConfigurationApi,permis
 }
 
 function StructureEditor({
-  title,components,policies,rules,requireCode=false,submitLabel,submit,initial,actions=[]
+  title,components,bases,canReadBases,policies,rules,requireCode=false,submitLabel,submit,initial,actions=[]
 }:{
-  title:string;components:SalaryStructureComponentOption[];policies:CtcPolicyVersion[];
+  title:string;components:SalaryStructureComponentOption[];bases:SalaryStructurePayrollBaseOption[];
+  canReadBases:boolean;policies:CtcPolicyVersion[];
   rules:EligibilityRuleVersion[];requireCode?:boolean;submitLabel?:string;
   submit?:(input:SalaryStructureWrite)=>Promise<void>;initial?:SalaryStructureVersion;
   actions?:EditorAction[];key?:string;
@@ -165,13 +172,19 @@ function StructureEditor({
   const [name,setName]=useState(initial?.name??'');
   const [policy,setPolicy]=useState(initial?.ctcPolicyVersionId??'');
   const [rule,setRule]=useState(initial?.eligibilityRuleVersionId??'');
-  const [target,setTarget]=useState(String(initial?.targetAnnualAmount??1200000));
+  const [targetType,setTargetType]=useState<SalaryTargetType>(initial?.targetType??'ANNUAL_CTC');
+  const [targetAmount,setTargetAmount]=useState(String(initial?.targetSourceAmount??initial?.targetAnnualAmount??'1200000.0000'));
+  const [tolerance,setTolerance]=useState(String(initial?.toleranceAmount??'0.0100'));
+  const [inclusiveBase,setInclusiveBase]=useState(initial?.inclusivePayrollBaseVersionId??'');
+  const [exclusiveBase,setExclusiveBase]=useState(initial?.exclusivePayrollBaseVersionId??'');
+  const targetContract=salaryTargetContractFor(targetType);
   const [effectiveFrom,setEffectiveFrom]=useState(initial?.effectiveFrom??today());
   const [effectiveTo,setEffectiveTo]=useState(initial?.effectiveTo??'');
   const [lines,setLines]=useState<DraftLine[]>(initial?.lines.map(toDraftLine)
     ??[newLine('FIXED'),newLine('RESIDUAL')]);
   const [formError,setFormError]=useState('');
   const availableComponents=mergeComponents(components,initial?.lines??[]);
+  const availableBases=mergeBases(bases,initial);
 
   function update(key:string,change:Partial<DraftLine>){
     setLines(current=>current.map(line=>line.key===key?{...line,...change}:line));
@@ -184,6 +197,18 @@ function StructureEditor({
     if(residuals.length!==1||lines.at(-1)?.lineType!=='RESIDUAL'){
       setFormError('Exactly one residual line is required and it must be final.');return null;
     }
+    if(!/^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/.test(targetAmount)||Number(targetAmount)<=0){
+      setFormError('Target source amount must be a positive decimal with up to four fraction digits.');return null;
+    }
+    if(!/^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/.test(tolerance)){
+      setFormError('Target tolerance must be a non-negative decimal with up to four fraction digits.');return null;
+    }
+    if(targetContract.requiresInclusiveBase&&!inclusiveBase){
+      setFormError(`${targetContract.label} requires an approved inclusive payroll base.`);return null;
+    }
+    if(inclusiveBase&&inclusiveBase===exclusiveBase){
+      setFormError('Inclusive and exclusive payroll bases must differ.');return null;
+    }
     setFormError('');
     return {
       code:requireCode?code:undefined,name,currency:'INR',
@@ -191,8 +216,11 @@ function StructureEditor({
       payFrequency:initial?.payFrequency??'MONTHLY',
       confidentialityLevel:initial?.confidentialityLevel??'STANDARD',
       ctcPolicyVersionId:policy,eligibilityRuleVersionId:rule||undefined,
-      targetType:initial?.targetType??'ANNUAL_CTC',targetAnnualAmount:Number(target),
-      toleranceAmount:initial?.toleranceAmount??0.01,
+      targetType,targetFrequency:targetContract.frequency,targetAmount:targetAmount.trim(),
+      targetAnnualizationFactor:targetContract.annualizationFactor??undefined,
+      inclusivePayrollBaseVersionId:targetContract.executionMode==='CALCULATION_ENGINE'?undefined:inclusiveBase||undefined,
+      exclusivePayrollBaseVersionId:targetContract.executionMode==='CALCULATION_ENGINE'?undefined:exclusiveBase||undefined,
+      targetAnnualAmount:undefined,toleranceAmount:tolerance.trim(),
       residualComponentVersionId:residuals[0].componentVersionId,
       effectiveFrom,effectiveTo:effectiveTo||undefined,
       lines:lines.map((line,index)=>({
@@ -227,8 +255,43 @@ function StructureEditor({
     <label>Eligibility rule version<select value={rule} onChange={event=>setRule(event.target.value)}>
       <option value="">No rule</option>{ruleOptions.map(item=><option key={item.versionId}
         value={item.versionId}>{item.code} v{item.versionSequence}</option>)}</select></label>
-    <label>Target annual CTC<input required type="number" min="0.0001" step="0.0001"
-      value={target} onChange={event=>setTarget(event.target.value)}/></label>
+    <label>Target type<select aria-label="Target type" required value={targetType}
+      onChange={event=>{
+        const next=event.target.value as SalaryTargetType;setTargetType(next);
+        if(salaryTargetContractFor(next).executionMode==='CALCULATION_ENGINE'){
+          setInclusiveBase('');setExclusiveBase('');
+        }
+      }}>{salaryTargetContracts.map(item=><option key={item.type} value={item.type}>{item.label}</option>)}</select></label>
+    <label>Target source amount<input aria-label="Target source amount" required inputMode="decimal"
+      pattern="(?:0|[1-9]\d*)(?:\.\d{1,4})?" value={targetAmount}
+      onChange={event=>setTargetAmount(event.target.value)}/></label>
+    <label>Target tolerance<input aria-label="Target tolerance" required inputMode="decimal"
+      pattern="(?:0|[1-9]\d*)(?:\.\d{1,4})?" value={tolerance}
+      onChange={event=>setTolerance(event.target.value)}/></label>
+    <div className="configuration-panel" aria-label="Target resolution contract">
+      <strong>Target resolution contract</strong>
+      <p>{targetContract.description}</p>
+      <small>Frequency: {targetContract.frequency} · Execution owner: {executionModeLabel(targetContract.executionMode)} · Annualization: {targetContract.annualizationFactor??'calculation-engine divisor policy'}</small>
+      <p>Normalized annual amount is authoritative only after the backend validates and returns the saved structure.</p>
+    </div>
+    {targetContract.executionMode!=='CALCULATION_ENGINE'&&<>
+      <label>Inclusive payroll base<select aria-label="Inclusive payroll base"
+        required={targetContract.requiresInclusiveBase} disabled={!canReadBases}
+        value={inclusiveBase} onChange={event=>setInclusiveBase(event.target.value)}>
+        <option value="">{targetContract.requiresInclusiveBase?'Select approved inclusive base':'No inclusive base'}</option>
+        {availableBases.map(item=><option key={item.versionId} value={item.versionId}>{item.code} - {item.name}</option>)}
+      </select></label>
+      <label>Exclusive payroll base<select aria-label="Exclusive payroll base"
+        disabled={!canReadBases} value={exclusiveBase} onChange={event=>setExclusiveBase(event.target.value)}>
+        <option value="">No exclusive base</option>
+        {availableBases.map(item=><option key={item.versionId} value={item.versionId}>{item.code} - {item.name}</option>)}
+      </select></label>
+      {targetContract.requiresInclusiveBase&&!canReadBases&&<p className="permission-note">
+        Payroll-base read permission is required to configure this target type.</p>}
+    </>}
+    {targetContract.executionMode==='CALCULATION_ENGINE'&&<p className="permission-note">
+      This workbench records the target contract only. It does not perform gross-up, tax iteration,
+      hourly/daily divisor resolution or official payroll calculation.</p>}
     <label>Structure effective from<input required type="date" value={effectiveFrom}
       onChange={event=>setEffectiveFrom(event.target.value)}/></label>
     <label>Structure effective to<input type="date" value={effectiveTo}
@@ -277,4 +340,22 @@ function mergeComponents(options:SalaryStructureComponentOption[],lines:SalarySt
       name:line.componentName,componentType:line.componentType,formulaType:line.componentFormulaType,
       approvalStatus:'APPROVED'});}}
   return result;
+}
+function mergeBases(options:SalaryStructurePayrollBaseOption[],initial?:SalaryStructureVersion){
+  const result=[...options];
+  for(const versionId of [initial?.inclusivePayrollBaseVersionId,initial?.exclusivePayrollBaseVersionId]){
+    if(versionId&&!result.some(item=>item.versionId===versionId)){
+      result.push({versionId,code:'PINNED',name:versionId,baseCategory:'CTC',approvalStatus:'APPROVED'});
+    }
+  }
+  return result;
+}
+function targetSummary(item:SalaryStructureVersion){
+  const contract=salaryTargetContractFor(item.targetType);
+  const source=item.targetSourceAmount??item.targetAnnualAmount??'—';
+  const frequency=item.targetFrequency??contract.frequency;
+  const executionMode=item.targetExecutionMode??contract.executionMode;
+  const annual=item.targetSourceAmount!==undefined&&item.targetAnnualAmount
+    ?` · normalized ${item.targetAnnualAmount} INR annual`:'';
+  return `${item.targetType} · ${source} INR ${frequency.toLowerCase()}${annual} · ${executionModeLabel(executionMode)}`;
 }

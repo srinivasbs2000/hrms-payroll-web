@@ -14,7 +14,12 @@ export type EligibilityScalar=string|number;
 export type StructureType='STANDARD'|'EXECUTIVE'|'SALES'|'HOURLY'|'CONTRACT';
 export type PayFrequency='MONTHLY'|'WEEKLY'|'BIWEEKLY'|'SEMIMONTHLY';
 export type ConfidentialityLevel='STANDARD'|'RESTRICTED'|'EXECUTIVE';
-export type SalaryTargetType='ANNUAL_CTC'|'ANNUAL_GROSS'|'MONTHLY_GROSS';
+export type SalaryTargetType=
+  'ANNUAL_CTC'|'ANNUAL_TOTAL_CTC'|'ANNUAL_FIXED_CTC'|'ANNUAL_GROSS'|'MONTHLY_GROSS'|
+  'ANNUAL_BASIC'|'HOURLY_RATE'|'DAILY_RATE'|'GRADE_MIDPOINT'|'TOTAL_CASH_TARGET'|
+  'NET_PAY_TARGET'|'EMPLOYER_COST_TARGET';
+export type SalaryTargetFrequency='ANNUAL'|'MONTHLY'|'HOURLY'|'DAILY';
+export type SalaryTargetExecutionMode='STRUCTURAL'|'TARGET_RESOLVER_REQUIRED'|'CALCULATION_ENGINE';
 export type SalaryLineType='FIXED'|'PERCENTAGE'|'RESIDUAL';
 export type OverridePolicy='PROHIBITED'|'CONTROLLED'|'ALLOWED';
 
@@ -29,6 +34,11 @@ export const eligibilityFactTypes:Record<string,EligibilityFactType>={
 export interface SalaryStructureComponentOption{
   identityId:string;versionId:string;code:string;name:string;
   componentType:ComponentType;formulaType:FormulaType;approvalStatus?:ApprovalStatus;
+}
+export interface SalaryStructurePayrollBaseOption{
+  versionId:string;code:string;name:string;
+  baseCategory:'CALCULATION'|'STATUTORY'|'TAX'|'CTC'|'REPORTING';
+  approvalStatus:ApprovalStatus;
 }
 
 export interface CtcPolicyTreatmentWrite{
@@ -95,7 +105,9 @@ export interface SalaryStructureWrite{
   code?:string;name:string;currency?:'INR';structureType:StructureType;
   payFrequency:PayFrequency;confidentialityLevel:ConfidentialityLevel;
   ctcPolicyVersionId:string;eligibilityRuleVersionId?:string;targetType:SalaryTargetType;
-  targetAnnualAmount:number;toleranceAmount:number;residualComponentVersionId:string;
+  targetFrequency:SalaryTargetFrequency;targetAmount:string;targetAnnualizationFactor?:string;
+  inclusivePayrollBaseVersionId?:string;exclusivePayrollBaseVersionId?:string;
+  targetAnnualAmount?:string;toleranceAmount:string;residualComponentVersionId:string;
   effectiveFrom:string;effectiveTo?:string;lines:SalaryStructureLineWrite[];
 }
 export interface SalaryStructureLineView extends Omit<SalaryStructureLineWrite,'targetAmount'|'targetPercentage'|'percentageBaseCode'|'minimumAmount'|'maximumAmount'>{
@@ -109,7 +121,10 @@ export interface SalaryStructureVersion{
   versionSequence:number;versionNo:number;name:string;currency:'INR';structureSchemaVersion:number;
   structureType:StructureType;payFrequency:PayFrequency;confidentialityLevel:ConfidentialityLevel;
   ctcPolicyVersionId:string;eligibilityRuleVersionId:string|null;targetType:SalaryTargetType;
-  targetAnnualAmount:number;toleranceAmount:number;residualComponentVersionId:string;
+  targetFrequency?:SalaryTargetFrequency;targetSourceAmount?:string|number;
+  targetAnnualizationFactor?:string|number|null;targetExecutionMode?:SalaryTargetExecutionMode;
+  inclusivePayrollBaseVersionId?:string|null;exclusivePayrollBaseVersionId?:string|null;
+  targetAnnualAmount:string|number|null;toleranceAmount:string|number;residualComponentVersionId:string;
   configurationHash:string;validationFingerprint:string|null;effectiveFrom:string;
   effectiveTo:string|null;approvalStatus:ApprovalStatus;supersedesVersionId:string|null;
   superseded:boolean;lines:SalaryStructureLineView[];
@@ -130,6 +145,7 @@ export interface SalaryStructureValidation{
 export interface CompensationConfigurationApi{
   listStructures(asOf:string):Promise<SalaryStructureVersion[]>;
   listComponents(asOf:string):Promise<SalaryStructureComponentOption[]>;
+  listPayrollBases?(asOf:string):Promise<SalaryStructurePayrollBaseOption[]>;
   structureHistory(identityId:string):Promise<SalaryStructureVersion[]>;
   createStructure(input:SalaryStructureWrite):Promise<SalaryStructureVersion>;
   addStructureVersion(identityId:string,input:SalaryStructureWrite):Promise<SalaryStructureVersion>;
@@ -161,6 +177,7 @@ const post=(body?:unknown,headers?:HeadersInit):RequestInit=>({method:'POST',hea
 export const httpCompensationConfigurationApi:CompensationConfigurationApi={
   listStructures:asOf=>payrollRequest(`/salary-structures?asOf=${encodeURIComponent(asOf)}`),
   listComponents:asOf=>payrollRequest(`/pay-components?asOf=${encodeURIComponent(asOf)}`),
+  listPayrollBases:asOf=>payrollRequest(`/payroll-bases?asOf=${encodeURIComponent(asOf)}`),
   structureHistory:id=>payrollRequest(`/salary-structures/${id}/versions`),
   createStructure:input=>payrollRequest('/salary-structures',post(input)),
   addStructureVersion:(id,input)=>payrollRequest(`/salary-structures/${id}/versions`,post(input)),
