@@ -6,6 +6,7 @@ import {EligibilityRulePanel} from './EligibilityRulePanel';
 import {FlexBenefitPlanPanel} from './FlexBenefitPlanPanel';
 import {SalaryStructureSimulationPanel} from './SalaryStructureSimulationPanel';
 import {SalaryStructureLifecyclePanel} from './SalaryStructureLifecyclePanel';
+import {SalaryStructureDesignImpactPanel} from './SalaryStructureDesignImpactPanel';
 import {executionModeLabel,salaryTargetContractFor,salaryTargetContracts} from './salary-target-contract';
 import {httpCompensationConfigurationApi} from './salary-structure-api';
 import type {
@@ -154,6 +155,7 @@ export function SalaryStructurePage({api=httpCompensationConfigurationApi,permis
           <button type="submit">End-date structure version</button></form>}
         <SalaryStructureSimulationPanel api={api} permissions={granted} structure={selected}/>
         <SalaryStructureLifecyclePanel permissions={granted} structure={selected}/>
+        <SalaryStructureDesignImpactPanel permissions={granted} structure={selected} history={history}/>
       </section>}
     </>}
   </section>;
