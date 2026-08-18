@@ -1,10 +1,14 @@
 export type ApprovalStatus='DRAFT'|'APPROVED'|'REJECTED';
 export type PayrollProfileStatus='INCOMPLETE'|'READY'|'ON_HOLD'|'INACTIVE';
+export type PayrollRole='PRIMARY'|'SECONDARY';
+export type SalaryTargetFrequency='ANNUAL'|'MONTHLY'|'HOURLY'|'DAILY';
 
 export interface PayrollRelationshipWrite {
   externalEmployeeId?:string;
   employeeNumber?:string;
   legalEntityVersionId:string;
+  payrollStatutoryUnitVersionId?:string;
+  aggregationBoundaryKey?:string;
   relationshipStart:string;
   relationshipEnd?:string;
 }
@@ -18,6 +22,10 @@ export interface PayrollRelationshipView {
   versionSequence:number;
   versionNo:number;
   legalEntityVersionId:string;
+  payrollStatutoryUnitVersionId:string|null;
+  aggregationBoundaryKey:string|null;
+  countryCode:string|null;
+  employerCurrency:string|null;
   relationshipStart:string;
   relationshipEnd:string|null;
   approvalStatus:ApprovalStatus;
@@ -28,8 +36,12 @@ export interface PayrollRelationshipView {
 export interface PayrollAssignmentWrite {
   payrollRelationshipId?:string;
   assignmentNumber?:string;
+  sourceWorkAssignmentRef?:string;
   payrollRelationshipVersionId:string;
   establishmentVersionId:string;
+  payrollRole?:PayrollRole;
+  payrollEligibilityFrom?:string;
+  payrollEligibilityTo?:string;
   assignmentStart:string;
   assignmentEnd?:string;
 }
@@ -39,11 +51,15 @@ export interface PayrollAssignmentView {
   payrollRelationshipId:string;
   assignmentNumber:string;
   identityStatus:'ACTIVE'|'INACTIVE';
+  sourceWorkAssignmentRef:string|null;
   versionId:string;
   versionSequence:number;
   versionNo:number;
   payrollRelationshipVersionId:string;
   establishmentVersionId:string;
+  payrollRole:PayrollRole|null;
+  payrollEligibilityFrom:string|null;
+  payrollEligibilityTo:string|null;
   assignmentStart:string;
   assignmentEnd:string|null;
   approvalStatus:ApprovalStatus;
@@ -65,6 +81,7 @@ export interface PayGroupAssignmentWrite {
   payGroupVersionId:string;
   effectiveFrom:string;
   effectiveTo?:string;
+  impactAssessmentThrough?:string;
 }
 
 export interface PayGroupAssignmentView {
@@ -73,6 +90,8 @@ export interface PayGroupAssignmentView {
   payGroupVersionId:string;
   effectiveFrom:string;
   effectiveTo:string|null;
+  impactAssessmentThrough:string|null;
+  impactedPeriodCount:number;
   approvalStatus:ApprovalStatus;
   supersedesAssignmentId:string|null;
   superseded:boolean;
@@ -82,8 +101,12 @@ export interface PayGroupAssignmentView {
 export interface SalaryAssignmentWrite {
   payrollAssignmentVersionId:string;
   salaryStructureVersionId:string;
-  monthlyAmount:number;
-  currency?:'INR';
+  monthlyAmount?:number;
+  targetType?:string;
+  targetValue?:number;
+  targetFrequency?:SalaryTargetFrequency;
+  currency?:string;
+  sourceCompensationEventId?:string;
   effectiveFrom:string;
   effectiveTo?:string;
 }
@@ -92,8 +115,12 @@ export interface SalaryAssignmentView {
   id:string;
   payrollAssignmentVersionId:string;
   salaryStructureVersionId:string;
-  monthlyAmount:number;
-  currency:'INR';
+  monthlyAmount:number|null;
+  targetType:string|null;
+  targetValue:number|null;
+  targetFrequency:SalaryTargetFrequency|null;
+  currency:string;
+  sourceCompensationEventId:string|null;
   effectiveFrom:string;
   effectiveTo:string|null;
   approvalStatus:ApprovalStatus;
@@ -161,6 +188,10 @@ function required<T>(value:Promise<T|null>):Promise<T>{
     if(result===null)throw new Error('Expected API response body');
     return result;
   });
+}
+
+export function employeePayrollRequest<T>(path:string,options:RequestInit={}):Promise<T>{
+  return required(request<T>(path,options));
 }
 
 export const httpEmployeePayrollApi:EmployeePayrollApi={
