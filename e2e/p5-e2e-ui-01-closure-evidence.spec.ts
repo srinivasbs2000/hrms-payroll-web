@@ -105,7 +105,10 @@ test.describe('P5-E2E-UI-01 closure evidence',()=>{
     await expect(versionV1Closed).not.toContainText('Superseded');
 
     await selectEmployeeAssignment(page);
-    const assignmentV1=page.locator('article.configuration-item').filter({hasText:PAY_GROUP_VERSION_V1});
+    const payGroupAssignments=page.locator('section.card').filter({
+      has:page.getByRole('heading',{name:'Pay-group assignments',exact:true})
+    });
+    const assignmentV1=payGroupAssignments.locator('article.configuration-item').filter({hasText:PAY_GROUP_VERSION_V1});
     await expect(assignmentV1).toBeVisible();
     const assignmentEndForm=assignmentV1.getByRole('form',{name:'End-date pay-group assignment',exact:true});
     await assignmentEndForm.getByLabel('End-date pay-group assignment date').fill(CUTOVER);
@@ -131,14 +134,14 @@ test.describe('P5-E2E-UI-01 closure evidence',()=>{
     expect(assignmentV2.payGroupVersionId).toBe(v2.versionId);
     expect(assignmentV2.approvalStatus).toBe('DRAFT');
 
-    const assignmentV2Row=page.locator('article.configuration-item').filter({hasText:v2.versionId});
+    const assignmentV2Row=payGroupAssignments.locator('article.configuration-item').filter({hasText:v2.versionId});
     await expect(assignmentV2Row).toContainText('DRAFT');
     const approveAssignmentResponse=await waitForApi(
       page,'POST',`/api/v1/pay-group-assignments/${assignmentV2.id}/approval`,
       ()=>assignmentV2Row.getByRole('button',{name:'Approve',exact:true}).click()
     );
     expect(approveAssignmentResponse.status()).toBe(200);
-    await expect(page.locator('article.configuration-item').filter({hasText:v2.versionId})).toContainText('APPROVED');
+    await expect(payGroupAssignments.locator('article.configuration-item').filter({hasText:v2.versionId})).toContainText('APPROVED');
 
     await expectNoStoredTokens(page);
     network.assertClean();
