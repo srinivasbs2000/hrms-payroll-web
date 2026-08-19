@@ -24,6 +24,9 @@ const profile:EmployeePayrollProfileView={id:'33000000-0000-0000-0000-0000000000
 const groupAssignment:PayGroupAssignmentView={id:'34000000-0000-0000-0000-000000000001',payrollAssignmentVersionId:assignment.versionId,payGroupVersionId:'25100000-0000-0000-0000-000000000001',effectiveFrom:'2026-01-01',effectiveTo:'2029-01-01',impactAssessmentThrough:'2029-01-01',impactedPeriodCount:36,approvalStatus:'DRAFT',supersedesAssignmentId:null,superseded:false,versionNo:0};
 const salaryAssignment:SalaryAssignmentView={id:'35000000-0000-0000-0000-000000000001',payrollAssignmentVersionId:assignment.versionId,salaryStructureVersionId:'27100000-0000-0000-0000-000000000001',monthlyAmount:null,targetType:'ANNUAL_CTC',targetValue:1200000,targetFrequency:'ANNUAL',currency:'INR',sourceCompensationEventId:'36000000-0000-0000-0000-000000000001',effectiveFrom:'2026-01-01',effectiveTo:'2029-01-01',approvalStatus:'DRAFT',supersedesAssignmentId:null,superseded:false,versionNo:0};
 
+const legacyRelationship:PayrollRelationshipView={...relationship,payrollStatutoryUnitVersionId:null,aggregationBoundaryKey:null};
+const legacyAssignment:PayrollAssignmentView={...assignment,payrollRelationshipVersionId:legacyRelationship.versionId,sourceWorkAssignmentRef:null,payrollRole:null,payrollEligibilityFrom:null,payrollEligibilityTo:null};
+
 function fakeApi(overrides:Partial<EmployeePayrollApi>={}):EmployeePayrollApi{return {
   listRelationships:vi.fn().mockResolvedValue([]),relationshipHistory:vi.fn().mockResolvedValue([relationship]),createRelationship:vi.fn().mockResolvedValue(relationship),addRelationshipVersion:vi.fn().mockResolvedValue(relationship),correctRelationship:vi.fn().mockResolvedValue(relationship),approveRelationship:vi.fn().mockResolvedValue(relationship),endDateRelationship:vi.fn().mockResolvedValue({...relationship,versionNo:2}),
   listAssignments:vi.fn().mockResolvedValue([]),assignmentHistory:vi.fn().mockResolvedValue([assignment]),createAssignment:vi.fn().mockResolvedValue(assignment),addAssignmentVersion:vi.fn().mockResolvedValue(assignment),correctAssignment:vi.fn().mockResolvedValue(assignment),approveAssignment:vi.fn().mockResolvedValue(assignment),endDateAssignment:vi.fn().mockResolvedValue({...assignment,versionNo:2}),
@@ -83,4 +86,28 @@ test('creates pay-group impact contract and salary target contract without legac
     targetType:'ANNUAL_CTC',targetValue:1200000,targetFrequency:'ANNUAL',currency:'INR',sourceCompensationEventId:salaryAssignment.sourceCompensationEventId
   }));
   expect(submitted).not.toHaveProperty('monthlyAmount');
+});
+
+
+test('preserves schema-0 pay-group assignment compatibility for legacy payroll relationships',async()=>{
+  const api=fakeApi({
+    listRelationships:vi.fn().mockResolvedValue([legacyRelationship]),
+    relationshipHistory:vi.fn().mockResolvedValue([legacyRelationship]),
+    listAssignments:vi.fn().mockResolvedValue([legacyAssignment]),
+    assignmentHistory:vi.fn().mockResolvedValue([legacyAssignment])
+  });
+  render(<EmployeePayrollPage api={api} permissions={new Set([...readPermissions,'employee-payroll.pay-group-assignment.create'])}/>);
+  fireEvent.click(await screen.findByRole('button',{name:/EMP-001/}));
+  fireEvent.click(await screen.findByRole('button',{name:/ASN-001/}));
+  expect(screen.queryByLabelText('Impact assessment through')).not.toBeInTheDocument();
+  expect(screen.getByText(/Legacy relationship compatibility/)).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Pay-group version ID'),{target:{value:groupAssignment.payGroupVersionId}});
+  fireEvent.click(screen.getByRole('button',{name:'Create pay-group assignment draft'}));
+  await waitFor(()=>expect(api.createPayGroupAssignment).toHaveBeenCalledTimes(1));
+  const submitted=vi.mocked(api.createPayGroupAssignment).mock.calls[0]?.[0];
+  expect(submitted).toEqual(expect.objectContaining({
+    payrollAssignmentVersionId:legacyAssignment.versionId,
+    payGroupVersionId:groupAssignment.payGroupVersionId
+  }));
+  expect(submitted).not.toHaveProperty('impactAssessmentThrough');
 });
